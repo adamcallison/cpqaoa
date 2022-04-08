@@ -2,6 +2,24 @@ import numpy as np
 
 from qiskit import QuantumCircuit, QuantumRegister
 
+def ising_assignment_cost_from_vec(J, h, c, assignment_vec):
+    Jpart = np.dot(assignment_vec, np.dot(J, assignment_vec))
+    hpart = np.dot(h, assignment_vec)
+    return Jpart + hpart + c
+
+def ising_assignment_cost_from_binary(J, h, c, assignment_bin):
+    n = h.shape[0]
+    assignment_bin = ('0'*(n-len(assignment_bin))) + assignment_bin
+    assignment_vec = np.array(
+        tuple((1 if x == '0' else -1) for x in assignment_bin[::-1])
+        )
+    return ising_assignment_cost_from_vec(J, h, c, assignment_vec)
+
+def ising_assignment_cost_from_int(J, h, c, assignment_int):
+    n = h.shape[0]
+    assignment_bin = bin(assignment_int)[2:]
+    assignment_bin = ('0'*(n-len(assignment_bin))) + assignment_bin
+    return ising_assignment_cost_from_binary(J, h, c, assignment_bin)
 
 def qubo_to_ising(M, v, quboc):
     n = v.shape[0]

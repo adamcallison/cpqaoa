@@ -5,7 +5,6 @@ from qiskit.circuit import Parameter
 import numpy as np
 import skopt
 
-
 import cost_util, mix_util
 
 def qaoa_circuit(J, h, c, params_or_layers, measurement=True):
@@ -40,8 +39,8 @@ def qaoa_circuit(J, h, c, params_or_layers, measurement=True):
 
     return qc
 
-def circuitsim_qaoa_run(pqc, Jcost, hcost, ccost, params, shots, \
-    cvar=False, sample_catcher=None, cost_catcher=None):
+def circuitsim_qaoa_run(pqc, Jcost, hcost, ccost, params, shots, cvar=False, \
+    sample_catcher=None):
 
     pqc_params = pqc.parameters
     binds = {}
@@ -58,26 +57,49 @@ def circuitsim_qaoa_run(pqc, Jcost, hcost, ccost, params, shots, \
     simulator = QasmSimulator()
     job = simulator.run(qc, shots=shots)
     result = job.result()
-    counts = result.get_counts(qc)
+    counts_qc = result.get_counts(qc)
 
-    samples = []
-    nrgs = []
-    for key, val in counts.items():
-        sample = int(key, 2)
-        samples = samples + ([sample]*val)
-        sample_vec = np.array(tuple((1 if x == '0' else -1) for x in key[::-1]))
-        nrg = np.dot(sample_vec, np.dot(Jcost, sample_vec)) + \
-            np.dot(hcost, sample_vec) + ccost
-        nrgs = nrgs + ([nrg]*val)
-    samples, nrgs = np.array(samples), np.array(nrgs)
+    samples, nrgs, counts = [], [], []
+
+    # logic below has been somewhat tested, but could do with more, especially
+    # cvar stuff...
+
+    for sample_bin, count in counts_qc.items():
+        sample = int(sample_bin, 2)
+        nrg = cost_util.ising_assignment_cost_from_binary(Jcost, hcost, ccost, \
+            sample_bin)
+        samples.append(sample)
+        nrgs.append(nrg)
+        counts.append(count)
+    samples, nrgs, counts = np.array(samples), np.array(nrgs), np.array(counts)
+    nrgs_idx = np.argsort(nrgs)
+    samples, nrgs, counts = samples[nrgs_idx], nrgs[nrgs_idx], counts[nrgs_idx]
     if not (sample_catcher is None):
-        sample_catcher.extend(list(samples))
-        cost_catcher.extend(list(nrgs))
+        for i, sample in enumerate(samples):
+            try:
+                sample_stats = sample_catcher[sample]
+                sample_stats[1] += counts[i]
+            except KeyError:
+                sample_stats = [nrgs[i], counts[i]]
+            sample_catcher[sample] = sample_stats
     if cvar:
-        nrgs = np.sort(nrgs)
-        obj = np.mean(nrgs[:int(np.ceil(0.5*shots))])
+        thresh = int(np.ceil(0.5*shots))
+        counts_cumsum = np.cumsum(counts)
+        use = np.sum(counts_cumsum < thresh)
+        samples_use = samples[:use+1]
+        nrgs_use = nrgs[:use+1]
+        counts_use = counts[:use+1]
+        counts_use[-1] = thresh - np.sum(counts_use[:-1])
     else:
-        obj = np.mean(nrgs)
+        samples_use = samples
+        nrgs_use = nrgs
+        counts_use = counts
+        thresh = shots
+
+    assert np.sum(counts_use) == thresh
+
+    obj = np.dot(nrgs_use, counts_use)/thresh
+
     return obj
 
 def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
@@ -88,14 +110,14 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
 
     dims = [(0.0, 2*np.pi)]*2*layers
 
-    sample_catcher, cost_catcher = [], []
+    sample_catcher = {}
 
     pqc = qaoa_circuit(J, h, c, layers, measurement=True)
 
     def func(params):
         params = tuple(params)
         obj = circuitsim_qaoa_run(pqc, Jcost, hcost, ccost, params, shots, \
-            cvar=cvar, sample_catcher=sample_catcher, cost_catcher=cost_catcher)
+            cvar=cvar, sample_catcher=sample_catcher)
         return obj
 
     res = skopt.gp_minimize(func,                  # the function to minimize
@@ -109,33 +131,11 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     success = True
     if extra_samples > 0:
         params = tuple(params)
-        circuitsim_qaoa_run(pqc, Jcost, hcost, ccost, params, \
-            extra_samples, cvar=cvar, sample_catcher=sample_catcher, \
-            cost_catcher=cost_catcher)
-    samples = np.array(sample_catcher)
-    costs = np.array(cost_catcher)
-    samples_unique, costs_unique, counts = [], [], []
-    while len(samples) > 0:
-        sample = samples[0]
-        fil = (samples == sample)
-        count = np.sum(fil)
-        cost = costs[0]
-        samples = samples[~fil]
-        costs = costs[~fil]
-        samples_unique.append(sample)
-        costs_unique.append(cost)
-        counts.append(count)
-    samples_unique, costs_unique, counts = np.array(samples_unique), \
-        np.array(costs_unique), np.array(counts)
-    costs_unique_idx = np.argsort(costs_unique)
-    samples_unique = samples_unique[costs_unique_idx]
-    costs_unique = costs_unique[costs_unique_idx]
-    counts = counts[costs_unique_idx]
-    samples_dict = {}
-    for i, su in enumerate(samples_unique):
-        samples_dict[su] = {
-            'cost': costs_unique[i],
-            'count': counts[i]
-            }
+        circuitsim_qaoa_run(pqc, Jcost, hcost, ccost, params, extra_samples, \
+            cvar=cvar, sample_catcher=sample_catcher)
+    samples = sample_catcher
 
-    return value, params, success, samples_dict
+    samples = \
+        {k: v for k, v in sorted(samples.items(), key=lambda item: item[1][0])}
+
+    return value, params, success, samples
