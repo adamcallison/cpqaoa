@@ -1,5 +1,6 @@
 import numpy as np
 import skopt
+import sys
 
 from numba import njit
 
@@ -68,12 +69,12 @@ def abstract_qao_objective(Hd_transformed, Hp_run, Hp_cost, params, \
 
 def abstract_qaoa_loop(Hd_transformed, Hp_run, Hp_cost, layers, shots=None, \
     cvar=False, extra_samples=0, minimizer_params=None, get_statevector=False, \
-    verbose=False):
+    param_max=(2*np.pi), verbose=False):
 
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
 
-    dims = [(0.0, 2*np.pi)]*2*layers
+    dims = [(0.0, param_max)]*2*layers
 
     if not (shots is None):
         sample_catcher = []
@@ -86,12 +87,31 @@ def abstract_qaoa_loop(Hd_transformed, Hp_run, Hp_cost, layers, shots=None, \
             shots=shots, cvar=cvar, sample_catcher=sample_catcher)
         return obj
 
+    if verbose:
+        calls = 0
+        best_obj = float('inf')
+        def callback(res):
+            nonlocal calls
+            nonlocal best_obj
+            obj = res.fun
+            calls += 1
+            if obj < best_obj:
+                best_obj = obj
+            print(
+                f"Call {calls} of {minimizer_params['n_calls']}. "\
+                f"Best Obj.: {best_obj}",
+                end='\r')
+    else:
+        callback = None
+
     res = skopt.gp_minimize(func,                  # the function to minimize
                       dims,      # the bounds on each dimension of x
                       acq_func="EI",      # the acquisition function
-                      verbose=verbose,
+                      verbose=False,
+                      callback=callback,
                       **minimizer_params
     )
+
     value = res.fun
     params = tuple(res.x)
     success = True
