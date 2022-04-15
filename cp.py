@@ -47,6 +47,25 @@ def sample_to_cp_partition(sample, n):
     core, periphery = np.array(core), np.array(periphery)
     return core, periphery
 
+def stochastic_block_model(n_nodes, n_core, p_cc, p_cp, p_pp):
+    A = np.zeros((n_nodes, n_nodes))
+    for row in range(n_nodes-1):
+        for col in range(row+1, n_nodes):
+            rn = np.random.default_rng().uniform()
+            if (row < n_core) and (col < n_core):
+                A[row, col] = int(rn < p_cc)
+                A[col, row] = int(rn < p_cc)
+            elif (row >= n_core) and (col < n_core):
+                A[row, col] = int(rn < p_cp)
+                A[col, row] = int(rn < p_cp)
+            elif (row < n_core) and (col >= n_core):
+                A[row, col] = int(rn < p_cp)
+                A[col, row] = int(rn < p_cp)
+            elif (row >= n_core) and (col >= n_core):
+                A[row, col] = int(rn < p_pp)
+                A[col, row] = int(rn < p_pp)
+    return A
+
 def borgatti_etal():
     # returns example adjacency matrix for Borgatti et. al
     # https://www.sciencedirect.com/science/article/pii/S0378873399000192

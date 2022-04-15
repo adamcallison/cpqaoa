@@ -149,16 +149,12 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     else:
         callback = None
 
-    res = skopt.gp_minimize(func,                  # the function to minimize
-                      dims,      # the bounds on each dimension of x
-                      acq_func="EI",      # the acquisition function
-                      verbose=False,
-                      callback=callback,
-                      **minimizer_params
-    )
+    res = skopt.gp_minimize(func, dims, acq_func="EI", callback=callback, \
+        **minimizer_params)
     value = res.fun
     params = tuple(res.x)
     success = True
+
     if extra_samples > 0:
         params = tuple(params)
         circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
