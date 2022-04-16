@@ -1,7 +1,7 @@
 import numpy as np
 import cost_util
 
-def cp_qubo(adjacency, sparse_approx=False):
+def cp_qubo_mode1(adjacency, sparse_approx=False):
     n = adjacency.shape[0]
     N1 = int(np.round(np.sum(adjacency)/2))
     Nt = n*(n-1)//2
@@ -16,7 +16,7 @@ def cp_qubo(adjacency, sparse_approx=False):
     else:
         M = M_p1 + M_p2
 
-    v_p1 = -2.0*rho*n*np.ones(n)
+    v_p1 = -2.0*rho*(n-1)*np.ones(n)
     v_p2 = np.zeros(n)
     for j in range(n):
         v_p2[j] = np.sum(adjacency[j])
@@ -27,8 +27,42 @@ def cp_qubo(adjacency, sparse_approx=False):
 
     return M, v, quboc
 
-def cp_ising(adjacency, sparse_approx=False):
-    M, v, quboc = cp_qubo(adjacency, sparse_approx=sparse_approx)
+def cp_qubo_mode2(adjacency, sparse_approx=False):
+    # need to check if this is correct
+    n = adjacency.shape[0]
+    N1 = int(np.round(np.sum(adjacency)/2))
+    Nt = n*(n-1)//2
+    N2 = Nt - N1
+    rho = N1/N2
+
+    M_p1 = rho*np.ones((n, n))
+    np.fill_diagonal(M_p1, 0.0)
+    M_p2 = (1-rho)*adjacency
+    if sparse_approx:
+        M = M_p2
+    else:
+        M = M_p1 + M_p2
+
+    v_p1 = -2.0*rho*(n-1)*np.ones(n)
+    v_p2 = np.zeros(n)
+    for j in range(n):
+        v_p2[j] = np.sum(adjacency[j])
+    v_p2 = 2.0*rho*v_p2
+    v = v_p1 + v_p2
+
+    quboc = rho*(n*(n-1) - np.sum(adjacency))
+
+    return M, v, quboc
+
+def cp_qubo(adjacency, sparse_approx=False, mode=1):
+    if mode == 1:
+        return cp_qubo_mode1(adjacency, sparse_approx=sparse_approx)
+    elif mode == 2:
+        return cp_qubo_mode2(adjacency, sparse_approx=sparse_approx)
+
+
+def cp_ising(adjacency, sparse_approx=False, mode=1):
+    M, v, quboc = cp_qubo(adjacency, sparse_approx=sparse_approx, mode=mode)
     J, h, c = cost_util.qubo_to_ising(-M, -v, -quboc)
     return J, h, c
 
@@ -41,9 +75,9 @@ def sample_to_cp_partition(sample, n):
     core, periphery = [], []
     for i, val in enumerate(samplestr):
         if val == '1':
-            core.append(i)
+            core.append(i+1)
         else:
-            periphery.append(i)
+            periphery.append(i+1)
     core, periphery = np.array(core), np.array(periphery)
     return core, periphery
 
