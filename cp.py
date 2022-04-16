@@ -35,12 +35,12 @@ def cp_qubo_mode2(adjacency, sparse_approx=False):
     N2 = Nt - N1
     rho = N1/N2
 
-    M_p1 = rho*np.ones((n, n))
-    np.fill_diagonal(M_p1, 0.0)
     M_p2 = (1-rho)*adjacency
     if sparse_approx:
         M = M_p2
     else:
+        M_p1 = rho*np.ones((n, n))
+        np.fill_diagonal(M_p1, 0.0)
         M = M_p1 + M_p2
 
     v_p1 = -2.0*rho*(n-1)*np.ones(n)
@@ -54,17 +54,105 @@ def cp_qubo_mode2(adjacency, sparse_approx=False):
 
     return M, v, quboc
 
+def cp_qubo_mode3(adjacency, sparse_approx=False):
+    # need to check if this is correct
+    n = adjacency.shape[0]
+    N1 = int(np.round(np.sum(adjacency)/2))
+    Nt = n*(n-1)//2
+    N2 = Nt - N1
+    rho = N1/N2
+
+    M_p2 = (1+rho)*adjacency
+    if sparse_approx:
+        M = M_p2
+    else:
+        M_p1 = -1.0*rho*np.ones((n, n))
+        np.fill_diagonal(M_p1, 0.0)
+        M = M_p1 + M_p2
+
+    v = np.zeros(n)
+
+    quboc = rho*(n*(n-1) - np.sum(adjacency))
+
+    return M, v, quboc
+
 def cp_qubo(adjacency, sparse_approx=False, mode=1):
     if mode == 1:
         return cp_qubo_mode1(adjacency, sparse_approx=sparse_approx)
     elif mode == 2:
         return cp_qubo_mode2(adjacency, sparse_approx=sparse_approx)
+    elif mode == 3:
+        return cp_qubo_mode3(adjacency, sparse_approx=sparse_approx)
 
 
 def cp_ising(adjacency, sparse_approx=False, mode=1):
     M, v, quboc = cp_qubo(adjacency, sparse_approx=sparse_approx, mode=mode)
     J, h, c = cost_util.qubo_to_ising(-M, -v, -quboc)
     return J, h, c
+
+def cp_ising_direct_mode1(A, sparse_approx=False):
+    # tries to place at least one vertex of each edge in the core
+    # tries to exclude both vertices of each non-edge from the core
+    n = A.shape[0]
+    N1 = int(np.round(np.sum(A)/2))
+    Nt = n*(n-1)//2
+    N2 = Nt - N1
+
+    alpha, beta = (Nt/N1), (Nt/N2)
+
+    J_p1 = (beta+alpha)*A/8
+    if sparse_approx:
+        J = J_p1
+    else:
+        J_p2 = -beta*np.ones((n, n))/8
+        J = J_p1 + J_p2
+
+    h_p1 = np.zeros(n)
+    for j in range(n):
+        h_p1[j] = np.sum(A[j])
+    h_p1 *= (alpha+beta)/4
+    h_p2 = -n*beta/4
+
+    h = h_p1 + h_p2
+
+    c = ( (beta-(3*alpha))*np.sum(A)/8 ) - ( n*n*beta/8 )
+
+    return J, h, c
+
+def cp_ising_direct_mode2(A, sparse_approx=False):
+    # tries to place both vertices of each edge in the core
+    # tries to exclude at least one vertex of each non-edge from the core
+    n = A.shape[0]
+    N1 = int(np.round(np.sum(A)/2))
+    Nt = n*(n-1)//2
+    N2 = Nt - N1
+
+    alpha, beta = (Nt/N1), (Nt/N2)
+
+    J_p1 = -(beta+alpha)*A/8
+    if sparse_approx:
+        J = J_p1
+    else:
+        J_p2 = beta*np.ones((n, n))/8
+        J = J_p1 + J_p2
+
+    h_p1 = np.zeros(n)
+    for j in range(n):
+        h_p1[j] = np.sum(A[j])
+    h_p1 *= (alpha+beta)/4
+    h_p2 = -n*beta/4
+
+    h = h_p1 + h_p2
+
+    c = ( ((3*beta)-alpha)*np.sum(A)/8 ) - ( 3*n*n*beta/8 )
+
+    return J, h, c
+
+def cp_ising_direct(A, sparse_approx=False, mode=1):
+    if mode == 1:
+        return cp_ising_direct_mode1(A, sparse_approx=sparse_approx)
+    elif mode == 2:
+        return cp_ising_direct_mode2(A, sparse_approx=sparse_approx)
 
 def sample_to_cp_partition(sample, n):
     # takes a sample (in integer form) and returns the corresponding
