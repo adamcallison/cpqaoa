@@ -1,6 +1,16 @@
 import numpy as np
 import cost_util
 
+import matplotlib as mpl
+mpl.rc('text', usetex=True)
+mpl.rcParams['text.latex.preamble']=r"\usepackage{amsmath}"
+mpl.rcParams['mathtext.fontset'] = 'cm'
+mpl.rcParams['mathtext.rm'] = 'serif'
+mpl.rcParams['font.family'] = 'serif'
+mpl.rcParams['figure.dpi'] = 100
+
+import matplotlib.pyplot as plt
+
 def cp_qubo_mode1(adjacency, sparse_approx=False):
     n = adjacency.shape[0]
     N1 = int(np.round(np.sum(adjacency)/2))
@@ -187,6 +197,52 @@ def stochastic_block_model(n_nodes, n_core, p_cc, p_cp, p_pp):
                 A[row, col] = int(rn < p_pp)
                 A[col, row] = int(rn < p_pp)
     return A
+
+def reorder_adjacency_matrix(A, order):
+    A_size = A.shape[0]
+    order = np.array(order)
+    order_length = len(order)
+    if not (A_size == order_length):
+        raise ValueError
+    if (np.sort(order) == np.arange(order_length)).all():
+        shift = 0
+    elif (np.sort(order) == np.arange(1, order_length+1)).all():
+        shift = 1
+    else:
+        raise ValueError
+
+    A_out = np.zeros_like(A)
+    for j in range(A_size):
+        for k in range(A_size):
+            A_out[j, k] = A[order[j]-shift, order[k]-shift]
+    return A_out
+
+def plot_adjacency_matrix(A, order=None, core_size=None):
+    n = A.shape[0]
+    if not (order is None):
+        A = reorder_adjacency_matrix(A, order)
+    else:
+        order = np.arange(1, n+1)
+
+    plt.figure(figsize=(5, 5))
+    for j in range(n):
+        xs = [k+1 for k in range(n) if A[j,k]>0.0]
+        ys = [n-j for k in xs]
+        plt.plot(xs, ys, marker='o', ls='', markersize=5, color='b')
+    if not (core_size is None):
+        plt.plot([0, n+1], [n-core_size+0.5]*2, c='black')
+        plt.plot([core_size+0.5]*2, [0, n+1], c='black')
+    xt = np.arange(1, n+1, 1)
+    xtl = [f'${x}$' for x in order[::1]]
+    plt.xticks(xt, xtl, fontsize=10)
+    yt = np.arange(1, n+1, 1)
+    ytl = [f'${y}$' for y in order[::-1]]
+    plt.yticks(yt, ytl, fontsize=10)
+    plt.tick_params(direction='in', size=5)
+    plt.xlim(0.5, n+0.5)
+    plt.ylim(0.5, n+0.5)
+    plt.tight_layout()
+    plt.show()
 
 def borgatti_etal():
     # returns example adjacency matrix for Borgatti et. al
