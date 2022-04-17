@@ -100,7 +100,7 @@ def cp_ising(adjacency, sparse_approx=False, mode=1):
     J, h, c = cost_util.qubo_to_ising(-M, -v, -quboc)
     return J, h, c
 
-def cp_ising_direct_mode1(A, sparse_approx=False):
+def cp_ising_direct_mode1(A, sparse_approx=False, reg=True):
     # tries to place at least one vertex of each edge in the core
     # tries to exclude both vertices of each non-edge from the core
     n = A.shape[0]
@@ -108,7 +108,10 @@ def cp_ising_direct_mode1(A, sparse_approx=False):
     Nt = n*(n-1)//2
     N2 = Nt - N1
 
-    alpha, beta = (Nt/N1), (Nt/N2)
+    if reg:
+        alpha, beta = (Nt/N1), (Nt/N2)
+    else:
+        alpha, beta = 1.0, 1.0
 
     J_p1 = (beta+alpha)*A/8
     if sparse_approx:
@@ -129,7 +132,7 @@ def cp_ising_direct_mode1(A, sparse_approx=False):
 
     return J, h, c
 
-def cp_ising_direct_mode2(A, sparse_approx=False):
+def cp_to_ising_direct_mode2_v1(A, sparse_approx=False, reg=True):
     # tries to place both vertices of each edge in the core
     # tries to exclude at least one vertex of each non-edge from the core
     n = A.shape[0]
@@ -137,7 +140,10 @@ def cp_ising_direct_mode2(A, sparse_approx=False):
     Nt = n*(n-1)//2
     N2 = Nt - N1
 
-    alpha, beta = (Nt/N1), (Nt/N2)
+    if reg:
+        alpha, beta = (Nt/N1), (Nt/N2)
+    else:
+        alpha, beta = 1.0, 1.0
 
     J_p1 = -(beta+alpha)*A/8
     if sparse_approx:
@@ -158,11 +164,77 @@ def cp_ising_direct_mode2(A, sparse_approx=False):
 
     return J, h, c
 
-def cp_ising_direct(A, sparse_approx=False, mode=1):
+def cp_to_ising_direct_mode2_v2(A, sparse_approx=False, reg=True):
+    # tries to place both vertices of each edge in the core
+    # tries to exclude both vertices of each non-edge from the core
+    n = A.shape[0]
+    N1 = int(np.round(np.sum(A)/2))
+    Nt = n*(n-1)//2
+    N2 = Nt - N1
+
+    if reg:
+        alpha, beta = (Nt/N1), (Nt/N2)
+    else:
+        alpha, beta = 1.0, 1.0
+
+    J_p1 = (beta-alpha)*A/8
+    if sparse_approx:
+        J = J_p1
+    else:
+        J_p2 = -beta*np.ones((n, n))/8
+        J = J_p1 + J_p2
+
+    h_p1 = np.zeros(n)
+    for j in range(n):
+        h_p1[j] = np.sum(A[j])
+    h_p1 *= (alpha+beta)/4
+    h_p2 = -n*beta/4
+
+    h = h_p1 + h_p2
+
+    c = ( (beta-alpha)*np.sum(A)/8 ) - ( n*n*beta/8 )
+
+    return J, h, c
+
+def cp_to_ising_direct_mode2_v3(A, sparse_approx=False, reg=True):
+    # tries to place at least one vertex of each edge in the core
+    # tries to exclude at least one vertex of each non-edge from the core
+    n = A.shape[0]
+    N1 = int(np.round(np.sum(A)/2))
+    Nt = n*(n-1)//2
+    N2 = Nt - N1
+
+    if reg:
+        alpha, beta = (Nt/N1), (Nt/N2)
+    else:
+        alpha, beta = 1.0, 1.0
+
+    J_p1 = (alpha-beta)*A/8
+    if sparse_approx:
+        J = J_p1
+    else:
+        J_p2 = beta*np.ones((n, n))/8
+        J = J_p1 + J_p2
+
+    h_p1 = np.zeros(n)
+    for j in range(n):
+        h_p1[j] = np.sum(A[j])
+    h_p1 *= (alpha+beta)/4
+    h_p2 = -n*beta/4
+
+    h = h_p1 + h_p2
+
+    c = ( ((3*beta)-alpha)*np.sum(A)/8 ) - ( 3*n*n*beta/8 )
+
+    return J, h, c
+
+cp_ising_direct_mode2 = cp_to_ising_direct_mode2_v3
+
+def cp_ising_direct(A, sparse_approx=False, mode=1, reg=True):
     if mode == 1:
-        return cp_ising_direct_mode1(A, sparse_approx=sparse_approx)
+        return cp_ising_direct_mode1(A, sparse_approx=sparse_approx, reg=reg)
     elif mode == 2:
-        return cp_ising_direct_mode2(A, sparse_approx=sparse_approx)
+        return cp_ising_direct_mode2(A, sparse_approx=sparse_approx, reg=reg)
 
 def sample_to_cp_partition(sample, n):
     # takes a sample (in integer form) and returns the corresponding
@@ -178,25 +250,6 @@ def sample_to_cp_partition(sample, n):
             periphery.append(i+1)
     core, periphery = np.array(core), np.array(periphery)
     return core, periphery
-
-def stochastic_block_model(n_nodes, n_core, p_cc, p_cp, p_pp):
-    A = np.zeros((n_nodes, n_nodes))
-    for row in range(n_nodes-1):
-        for col in range(row+1, n_nodes):
-            rn = np.random.default_rng().uniform()
-            if (row < n_core) and (col < n_core):
-                A[row, col] = int(rn < p_cc)
-                A[col, row] = int(rn < p_cc)
-            elif (row >= n_core) and (col < n_core):
-                A[row, col] = int(rn < p_cp)
-                A[col, row] = int(rn < p_cp)
-            elif (row < n_core) and (col >= n_core):
-                A[row, col] = int(rn < p_cp)
-                A[col, row] = int(rn < p_cp)
-            elif (row >= n_core) and (col >= n_core):
-                A[row, col] = int(rn < p_pp)
-                A[col, row] = int(rn < p_pp)
-    return A
 
 def reorder_adjacency_matrix(A, order):
     A_size = A.shape[0]
@@ -243,6 +296,64 @@ def plot_adjacency_matrix(A, order=None, core_size=None):
     plt.ylim(0.5, n+0.5)
     plt.tight_layout()
     plt.show()
+
+def correlation(A1, A2, order1=None, order2=None):
+    if not (order1 is None):
+        A1 = reorder_adjacency_matrix(A1, order1)
+    if not (order2 is None):
+        A2 = reorder_adjacency_matrix(A2, order2)
+    n, n2 = A1.shape[0], A2.shape[0]
+    if not n == n2:
+        raise ValueError
+    A1vec = A1[np.triu_indices(n,1)]
+    A2vec = A2[np.triu_indices(n,1)]
+    #A1vec = A1.flatten()
+    #A2vec = A2.flatten()
+    nancheckvec = A1vec*A2vec
+    A1vec = A1vec[~np.isnan(nancheckvec)]
+    A2vec = A2vec[~np.isnan(nancheckvec)]
+
+    if len(A1vec) == 0:
+        return np.float('nan')
+    if ((A1vec == 0.0).all()) or ((A2vec == 0.0).all()):
+        return np.float('nan')
+    covmat = np.cov(A1vec, A2vec)
+    pcc = covmat[0,1]/np.sqrt(covmat[0,0]*covmat[1,1])
+    pcc
+    return pcc
+
+def correlation_ideal(A, core_size, order=None, mode=1):
+    n = A.shape[0]
+    if mode == 1:
+        # with periphery connected to core
+        A_ideal = stochastic_block_model(n, core_size, 1.0, 1.0, 0.0)
+    elif mode == 2:
+        # without periphery connected to core
+        A_ideal = stochastic_block_model(n, core_size, 1.0, None, 0.0)
+    else:
+        raise ValueError
+    return correlation(A, A_ideal, order1=order)
+
+def stochastic_block_model(n_nodes, n_core, p_cc, p_cp, p_pp):
+    A = np.zeros((n_nodes, n_nodes))
+    for row in range(n_nodes-1):
+        for col in range(row+1, n_nodes):
+            rn = np.random.default_rng().uniform()
+            if (row < n_core) and (col < n_core):
+                A[row, col] = int(rn < p_cc)
+                A[col, row] = int(rn < p_cc)
+            elif (row >= n_core) and (col < n_core) or \
+                 (row < n_core) and (col >= n_core):
+                if p_cp is None:
+                    val = float('nan')
+                else:
+                    val = int(rn < p_cp)
+                A[row, col] = val
+                A[col, row] = val
+            elif (row >= n_core) and (col >= n_core):
+                A[row, col] = int(rn < p_pp)
+                A[col, row] = int(rn < p_pp)
+    return A
 
 def borgatti_etal():
     # returns example adjacency matrix for Borgatti et. al
