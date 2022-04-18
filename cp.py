@@ -132,71 +132,7 @@ def cp_ising_direct_mode1(A, sparse_approx=False, reg=True):
 
     return J, h, c
 
-def cp_to_ising_direct_mode2_v1(A, sparse_approx=False, reg=True):
-    # tries to place both vertices of each edge in the core
-    # tries to exclude at least one vertex of each non-edge from the core
-    n = A.shape[0]
-    N1 = int(np.round(np.sum(A)/2))
-    Nt = n*(n-1)//2
-    N2 = Nt - N1
-
-    if reg:
-        alpha, beta = (Nt/N1), (Nt/N2)
-    else:
-        alpha, beta = 1.0, 1.0
-
-    J_p1 = -(beta+alpha)*A/8
-    if sparse_approx:
-        J = J_p1
-    else:
-        J_p2 = beta*np.ones((n, n))/8
-        J = J_p1 + J_p2
-
-    h_p1 = np.zeros(n)
-    for j in range(n):
-        h_p1[j] = np.sum(A[j])
-    h_p1 *= (alpha+beta)/4
-    h_p2 = -n*beta/4
-
-    h = h_p1 + h_p2
-
-    c = ( ((3*beta)-alpha)*np.sum(A)/8 ) - ( 3*n*n*beta/8 )
-
-    return J, h, c
-
-def cp_to_ising_direct_mode2_v2(A, sparse_approx=False, reg=True):
-    # tries to place both vertices of each edge in the core
-    # tries to exclude both vertices of each non-edge from the core
-    n = A.shape[0]
-    N1 = int(np.round(np.sum(A)/2))
-    Nt = n*(n-1)//2
-    N2 = Nt - N1
-
-    if reg:
-        alpha, beta = (Nt/N1), (Nt/N2)
-    else:
-        alpha, beta = 1.0, 1.0
-
-    J_p1 = (beta-alpha)*A/8
-    if sparse_approx:
-        J = J_p1
-    else:
-        J_p2 = -beta*np.ones((n, n))/8
-        J = J_p1 + J_p2
-
-    h_p1 = np.zeros(n)
-    for j in range(n):
-        h_p1[j] = np.sum(A[j])
-    h_p1 *= (alpha+beta)/4
-    h_p2 = -n*beta/4
-
-    h = h_p1 + h_p2
-
-    c = ( (beta-alpha)*np.sum(A)/8 ) - ( n*n*beta/8 )
-
-    return J, h, c
-
-def cp_to_ising_direct_mode2_v3(A, sparse_approx=False, reg=True):
+def cp_to_ising_direct_mode2(A, sparse_approx=False, reg=True):
     # tries to place at least one vertex of each edge in the core
     # tries to exclude at least one vertex of each non-edge from the core
     n = A.shape[0]
@@ -224,11 +160,9 @@ def cp_to_ising_direct_mode2_v3(A, sparse_approx=False, reg=True):
 
     h = h_p1 + h_p2
 
-    c = ( ((3*beta)-alpha)*np.sum(A)/8 ) - ( 3*n*n*beta/8 )
+    c = ((3*(beta-alpha))*np.sum(A)/8 ) - ( 3*n*n*beta/8 )
 
     return J, h, c
-
-cp_ising_direct_mode2 = cp_to_ising_direct_mode2_v3
 
 def cp_ising_direct(A, sparse_approx=False, mode=1, reg=True):
     if mode == 1:
@@ -307,8 +241,6 @@ def correlation(A1, A2, order1=None, order2=None):
         raise ValueError
     A1vec = A1[np.triu_indices(n,1)]
     A2vec = A2[np.triu_indices(n,1)]
-    #A1vec = A1.flatten()
-    #A2vec = A2.flatten()
     nancheckvec = A1vec*A2vec
     A1vec = A1vec[~np.isnan(nancheckvec)]
     A2vec = A2vec[~np.isnan(nancheckvec)]
