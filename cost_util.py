@@ -1,4 +1,5 @@
 import numpy as np
+import mixsk_all
 
 from qiskit import QuantumCircuit, QuantumRegister
 
@@ -69,3 +70,11 @@ def cost_circuit(J, h, c, param):
             qc.rzz(2*param*Jcoeff, q1, q2)
     qc.global_phase = qc.global_phase - (param*c)
     return qc
+
+def bnb_optimize(J, h, c, verbose=False):
+    best_state, best_nrg, stats = mixsk_all.bnb(J, h, priority_order='lowest', \
+    bound_type='recursive', verbose=verbose)
+    best_nrg += c
+    best_state = \
+        int(''.join(['0' if x == 1 else '1' for x in best_state[0][::-1]]),2)
+    return best_state, best_nrg, stats
