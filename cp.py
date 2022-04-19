@@ -132,7 +132,7 @@ def cp_ising_direct_mode1(A, sparse_approx=False, reg=True):
 
     return J, h, c
 
-def cp_to_ising_direct_mode2(A, sparse_approx=False, reg=True):
+def cp_ising_direct_mode2(A, sparse_approx=False, reg=True):
     # tries to place at least one vertex of each edge in the core
     # tries to exclude at least one vertex of each non-edge from the core
     n = A.shape[0]
