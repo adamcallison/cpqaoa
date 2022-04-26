@@ -1,7 +1,9 @@
 import numpy as np
+from functools import lru_cache
 
 from qiskit import QuantumCircuit, QuantumRegister, transpile
 
+@functools.lru_cache(maxsize=1)
 def standard_mixer_eigenvalues(n):
     # returns diagonal of standard mixer that has been hadamard Hd_transformed
     # into Z eigenbasis

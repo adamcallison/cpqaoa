@@ -1,8 +1,9 @@
 import numpy as np
 import skopt
 import sys
-
 from numba import njit
+
+import mix_util
 
 @njit
 def fwht(a) -> None:
@@ -26,7 +27,13 @@ def fwht(a) -> None:
 def unitary_propagator(H, state, time):
     return np.exp(-1.0j*time*H)*state
 
-def abstract_qaoa_run(Hd_transformed, Hp, params):
+def abstract_qaoa_run(Hp, params):
+
+    N = Hp.shape[0]
+    n = int(np.round(np.log2(N)))
+
+    Hd_transformed = mix_util.standard_mixer_eigenvalues(n)
+
     layers_double = len(params)
     if not layers_double % 2 == 0:
         raise ValueError
@@ -42,8 +49,8 @@ def abstract_qaoa_run(Hd_transformed, Hp, params):
         fwht(state)
     return state
 
-def abstract_qao_objective(Hd_transformed, Hp_run, Hp_cost, params, \
-    get_statevector=False, shots=None, cvar=False, sample_catcher=None):
+def abstract_qao_objective(Hp_run, Hp_cost, params, get_statevector=False, \
+    shots=None, cvar=False, sample_catcher=None):
 
     if (shots is None) and cvar:
         raise NotImplementedError
@@ -51,7 +58,7 @@ def abstract_qao_objective(Hd_transformed, Hp_run, Hp_cost, params, \
         raise ValueError
 
     N = Hp_run.shape[0]
-    fstate = abstract_qaoa_run(Hd_transformed, Hp_run, params)
+    fstate = abstract_qaoa_run(Hp_run, params)
     fprobs = np.abs(fstate)**2
     if shots is None:
         obj = np.dot( Hp_cost, fprobs )
@@ -92,8 +99,8 @@ def abstract_qao_objective(Hd_transformed, Hp_run, Hp_cost, params, \
     else:
         return obj
 
-def abstract_qaoa_loop(Hd_transformed, Hp_run, Hp_cost, layers, shots=None, \
-    cvar=False, extra_samples=0, minimizer_params=None, get_statevector=False, \
+def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
+    extra_samples=0, minimizer_params=None, get_statevector=False, \
     param_max=(2*np.pi), verbose=False):
 
     if minimizer_params is None:
@@ -108,8 +115,8 @@ def abstract_qaoa_loop(Hd_transformed, Hp_run, Hp_cost, layers, shots=None, \
 
     def func(params):
         params = tuple(params)
-        obj = abstract_qao_objective(Hd_transformed, Hp_run, Hp_cost, params, \
-            shots=shots, cvar=cvar, sample_catcher=sample_catcher)
+        obj = abstract_qao_objective(Hp_run, Hp_cost, params, shots=shots, \
+            cvar=cvar, sample_catcher=sample_catcher)
         return obj
 
     if verbose:
@@ -143,8 +150,8 @@ def abstract_qaoa_loop(Hd_transformed, Hp_run, Hp_cost, layers, shots=None, \
     if shots is None:
         sample_catcher = {}
     if (extra_samples > 0) or get_statevector:
-        _, fstate = abstract_qao_objective(Hd_transformed, Hp_run, Hp_cost, \
-            params, get_statevector=True, shots=extra_samples, cvar=cvar, \
+        _, fstate = abstract_qao_objective(Hp_run, Hp_cost, params, \
+            get_statevector=True, shots=extra_samples, cvar=cvar, \
             sample_catcher=sample_catcher)
 
     samples = sample_catcher
