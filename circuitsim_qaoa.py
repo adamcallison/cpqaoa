@@ -207,7 +207,6 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
         **minimizer_params)
     value = res.fun
     params = tuple(res.x)
-    success = True
 
     if extra_samples > 0:
         params = tuple(params)
@@ -218,4 +217,4 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     samples = \
         {k: v for k, v in sorted(samples.items(), key=lambda item: item[1][0])}
 
-    return value, params, success, samples
+    return value, params, samples

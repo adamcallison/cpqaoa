@@ -43,7 +43,7 @@ def abstract_qaoa_run(Hd_transformed, Hp, params):
     return state
 
 def abstract_qao_objective(Hd_transformed, Hp_run, Hp_cost, params, \
-    shots=None, cvar=False, sample_catcher=None):
+    get_statevector=False, shots=None, cvar=False, sample_catcher=None):
 
     if (shots is None) and cvar:
         raise NotImplementedError
@@ -57,15 +57,40 @@ def abstract_qao_objective(Hd_transformed, Hp_run, Hp_cost, params, \
         obj = np.dot( Hp_cost, fprobs )
     else:
         samples = np.random.default_rng().choice(N, size=shots, p=fprobs)
-        if not (sample_catcher is None):
-            sample_catcher.extend(list(samples))
+        samples, counts = np.unique(samples, return_counts=True)
         nrgs = Hp_cost[samples]
+        nrgs_idx = np.argsort(nrgs)
+        samples, nrgs, counts = samples[nrgs_idx], nrgs[nrgs_idx], counts[nrgs_idx]
+        if not (sample_catcher is None):
+            for i, sample in enumerate(samples):
+                try:
+                    sample_stats = sample_catcher[sample]
+                    sample_stats[1] += counts[i]
+                except KeyError:
+                    sample_stats = [nrgs[i], counts[i]]
+                sample_catcher[sample] = sample_stats
         if cvar:
-            nrgs = np.sort(nrgs)
-            obj = np.mean(nrgs[:int(np.ceil(0.5*shots))])
+            thresh = int(np.ceil(0.5*shots))
+            counts_cumsum = np.cumsum(counts)
+            use = np.sum(counts_cumsum < thresh)
+            samples_use = samples[:use+1]
+            nrgs_use = nrgs[:use+1]
+            counts_use = counts[:use+1]
+            counts_use[-1] = thresh - np.sum(counts_use[:-1])
         else:
-            obj = np.mean(nrgs)
-    return obj
+            samples_use = samples
+            nrgs_use = nrgs
+            counts_use = counts
+            thresh = shots
+
+        assert np.sum(counts_use) == thresh
+
+        obj = np.dot(nrgs_use, counts_use)/thresh
+
+    if get_statevector:
+        return obj, fstate
+    else:
+        return obj
 
 def abstract_qaoa_loop(Hd_transformed, Hp_run, Hp_cost, layers, shots=None, \
     cvar=False, extra_samples=0, minimizer_params=None, get_statevector=False, \
@@ -77,7 +102,7 @@ def abstract_qaoa_loop(Hd_transformed, Hp_run, Hp_cost, layers, shots=None, \
     dims = [(0.0, param_max)]*2*layers
 
     if not (shots is None):
-        sample_catcher = []
+        sample_catcher = {}
     else:
         sample_catcher = None
 
@@ -114,31 +139,20 @@ def abstract_qaoa_loop(Hd_transformed, Hp_run, Hp_cost, layers, shots=None, \
 
     value = res.fun
     params = tuple(res.x)
-    success = True
+
     if shots is None:
-        sample_catcher = []
+        sample_catcher = {}
     if (extra_samples > 0) or get_statevector:
-        fstate = abstract_qaoa_run(Hd_transformed, Hp_run, params)
-    if extra_samples > 0:
-        fprobs = np.abs(fstate)**2
-        N = Hp_run.shape[0]
-        new_samples = np.random.default_rng().choice(N, \
-            size=extra_samples, p=fprobs)
-        sample_catcher.extend(list(new_samples))
-    samples = np.array(sample_catcher)
-    samples_unique, counts = np.unique(samples, return_counts=True)
-    costs_unique = Hp_cost[samples_unique]
-    costs_unique_idx = np.argsort(costs_unique)
-    samples_unique = samples_unique[costs_unique_idx]
-    costs_unique = costs_unique[costs_unique_idx]
-    counts = counts[costs_unique_idx]
-    samples_dict = {}
-    for i, su in enumerate(samples_unique):
-        samples_dict[su] = {
-            'cost': costs_unique[i],
-            'count': counts[i]
-            }
+        _, fstate = abstract_qao_objective(Hd_transformed, Hp_run, Hp_cost, \
+            params, get_statevector=True, shots=extra_samples, cvar=cvar, \
+            sample_catcher=sample_catcher)
+
+    samples = sample_catcher
+
+    samples = \
+        {k: v for k, v in sorted(samples.items(), key=lambda item: item[1][0])}
+
     if get_statevector:
-        return value, params, success, samples_dict, fstate
+        return value, params, samples, fstate
     else:
-        return value, params, success, samples_dict
+        return value, params, samples
