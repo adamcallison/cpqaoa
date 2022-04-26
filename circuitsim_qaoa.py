@@ -1,4 +1,4 @@
-from qiskit import QuantumCircuit, QuantumRegister, transpile
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit.test.mock import FakeTokyo
 from qiskit.providers.aer import QasmSimulator
 from qiskit.circuit import Parameter
@@ -8,6 +8,50 @@ import skopt
 import cost_util, mix_util
 
 from qiskit.providers.aer import AerSimulator
+
+def qaoa_circuit_layer(J, h, c, params):
+    try:
+        params = tuple(params)
+    except TypeError:
+        raise ValueError("params must be iterable")
+    if not len(params) == 2:
+        raise ValueError("single QAOA layer has only 2 parameters")
+
+    n = h.shape[0]
+
+    qc_qubits = QuantumRegister(n, 'q')
+    qc = QuantumCircuit(qc_qubits)
+
+    param_p, param_d = params[0], params[1]
+    qc_cost = cost_util.cost_circuit(J, h, c, param_p)
+    qc_mix = mix_util.standard_mixer_circuit(n, param_d)
+    qc = qc.compose(qc_cost)
+    qc = qc.compose(qc_mix)
+
+    return qc
+
+def determine_qubit_assignment(qc):
+    # not needed, will remove eventually
+    wire_names = qc.draw().wire_names()
+    logical_idxs, physical_idxs = [], []
+    for wn in wire_names:
+        if '->' in wn:
+            logical_name, physical_name = \
+                tuple(x.strip() for x in wn.split('->'))
+            logical_name = logical_name.split('_')[1]
+            logical_idx, physical_idx = int(logical_name), int(physical_name)
+        else:
+            logical_idx = wn.split('_')[1].strip().strip(':')
+            logical_idx = int(logical_idx)
+            physical_idx = logical_idx
+        logical_idxs.append(logical_idx)
+        physical_idxs.append(physical_idx)
+    l_to_p = {logical_idxs[j]:physical_idxs[j] for j in \
+        range(len(logical_idxs))}
+    p_to_l = {physical_idxs[j]:logical_idxs[j] for j in \
+        range(len(physical_idxs))}
+
+    return l_to_p, p_to_l
 
 def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
     compile=True):
@@ -29,17 +73,22 @@ def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
     for q in range(n):
         qc.h(q)
 
+    layer_template_params = (Parameter(f'param_p'), Parameter(f'param_d'))
+    layer_template = qaoa_circuit_layer(J, h, c, layer_template_params)
+
     for layer in range(layers):
         param_p, param_d = params[2*layer], params[(2*layer)+1]
-        qc_cost = cost_util.cost_circuit(J, h, c, param_p)
-        qc_mix = mix_util.standard_mixer_circuit(n, param_d)
-        qc = qc.compose(qc_cost)
-        qc = qc.compose(qc_mix)
+        qc_layer = layer_template.assign_parameters({
+            layer_template_params[0]:param_p,
+            layer_template_params[1]:param_d,
+            }
+        )
+        qc = qc.compose(qc_layer)
+
     if measurement:
         qc.measure_all()
 
     if compile:
-
         device_backend = FakeTokyo()
         if noise:
             sim_tokyo = AerSimulator.from_backend(device_backend)
@@ -119,7 +168,7 @@ def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
 
 def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     cvar=False, extra_samples=0, minimizer_params=None, param_max=(2*np.pi), \
-    noise=False, verbose=False):
+    compile=False, noise=False, verbose=False):
 
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
@@ -128,7 +177,8 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
 
     sample_catcher = {}
 
-    pqc = qaoa_circuit(J, h, c, layers, noise=noise, measurement=True)
+    pqc = qaoa_circuit(J, h, c, layers, noise=noise, measurement=True, \
+        compile=compile)
 
     def func(params):
         params = tuple(params)
