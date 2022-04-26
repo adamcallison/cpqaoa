@@ -5,7 +5,7 @@ from qiskit.circuit import Parameter
 import numpy as np
 import skopt
 
-import cost_util, mix_util
+import cost_util, mix_util, generic_qaoa
 
 from qiskit.providers.aer import AerSimulator
 
@@ -99,6 +99,13 @@ def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
 
 def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
     cvar=False, noise=False, sample_catcher=None):
+    run_inputs, cost_inputs = (pqc, (Jcost, hcost, ccost))
+    res = generic_qaoa.qaoa_objective("circuitsim", run_inputs, cost_inputs, \
+        params, shots, cvar, False, noise, sample_catcher)
+    return res
+
+def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
+    cvar=False, noise=False, sample_catcher=None):
 
     pqc_params = pqc.parameters
     layers = len(pqc_params)//2
@@ -125,9 +132,6 @@ def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
 
     samples, nrgs, counts = [], [], []
 
-    # logic below has been somewhat tested, but could do with more, especially
-    # cvar stuff...
-
     for sample_bin, count in counts_qc.items():
         sample = int(sample_bin, 2)
         nrg = cost_util.ising_assignment_cost_from_binary(Jcost, hcost, ccost, \
@@ -136,35 +140,7 @@ def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
         nrgs.append(nrg)
         counts.append(count)
     samples, nrgs, counts = np.array(samples), np.array(nrgs), np.array(counts)
-    nrgs_idx = np.argsort(nrgs)
-    samples, nrgs, counts = samples[nrgs_idx], nrgs[nrgs_idx], counts[nrgs_idx]
-    if not (sample_catcher is None):
-        for i, sample in enumerate(samples):
-            try:
-                sample_stats = sample_catcher[sample]
-                sample_stats[1] += counts[i]
-            except KeyError:
-                sample_stats = [nrgs[i], counts[i]]
-            sample_catcher[sample] = sample_stats
-    if cvar:
-        thresh = int(np.ceil(0.5*shots))
-        counts_cumsum = np.cumsum(counts)
-        use = np.sum(counts_cumsum < thresh)
-        samples_use = samples[:use+1]
-        nrgs_use = nrgs[:use+1]
-        counts_use = counts[:use+1]
-        counts_use[-1] = thresh - np.sum(counts_use[:-1])
-    else:
-        samples_use = samples
-        nrgs_use = nrgs
-        counts_use = counts
-        thresh = shots
-
-    assert np.sum(counts_use) == thresh
-
-    obj = np.dot(nrgs_use, counts_use)/thresh
-
-    return obj
+    return (samples, counts, nrgs)
 
 def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     cvar=False, extra_samples=0, minimizer_params=None, param_max=(2*np.pi), \
