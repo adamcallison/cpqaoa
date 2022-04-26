@@ -9,8 +9,10 @@ import cost_util, mix_util
 
 from qiskit.providers.aer import AerSimulator
 
-def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False):
+def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
+    compile=True):
     if not type(params_or_layers) == int:
+        params = params_or_layers
         layers_double = len(params)
         layers = layers_double // 2
     else:
@@ -36,12 +38,14 @@ def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False):
     if measurement:
         qc.measure_all()
 
-    device_backend = FakeTokyo()
-    if noise:
-        sim_tokyo = AerSimulator.from_backend(device_backend)
-        qc = transpile(qc, sim_tokyo, optimization_level=3)
-    else:
-        qc = transpile(qc, device_backend, optimization_level=3)
+    if compile:
+
+        device_backend = FakeTokyo()
+        if noise:
+            sim_tokyo = AerSimulator.from_backend(device_backend)
+            qc = transpile(qc, sim_tokyo, optimization_level=3)
+        else:
+            qc = transpile(qc, device_backend, optimization_level=3)
     return qc
 
 def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
