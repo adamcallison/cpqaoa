@@ -54,7 +54,8 @@ def determine_qubit_assignment(qc):
     return l_to_p, p_to_l
 
 def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
-    compile=True):
+    compile=True, optimization_level=3):
+    # optimization_level only used if compile=True (passed to qiskit transpile)
     if not type(params_or_layers) == int:
         params = params_or_layers
         layers_double = len(params)
@@ -92,9 +93,10 @@ def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
         device_backend = FakeTokyo()
         if noise:
             sim_tokyo = AerSimulator.from_backend(device_backend)
-            qc = transpile(qc, sim_tokyo, optimization_level=3)
+            qc = transpile(qc, sim_tokyo, optimization_level=optimization_level)
         else:
-            qc = transpile(qc, device_backend, optimization_level=3)
+            qc = transpile(qc, device_backend, \
+                optimization_level=optimization_level)
     return qc
 
 def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
