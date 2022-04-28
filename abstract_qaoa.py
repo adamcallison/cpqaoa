@@ -4,6 +4,7 @@ import sys
 from numba import njit
 
 import mix_util
+import generic_qaoa
 
 @njit
 def fwht(a) -> None:
@@ -61,7 +62,7 @@ def abstract_qaoa_objective(Hp_run, Hp_cost, params, get_statevector=False, \
         obj = res
         return obj
 
-def _abstract_qao_objective(Hp_run, Hp_cost, params, shots=None, \
+def _abstract_qaoa_objective(Hp_run, Hp_cost, params, shots=None, \
     get_statevector=False, cvar=False, sample_catcher=None):
 
     if (shots is None) and cvar:
@@ -102,7 +103,7 @@ def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
 
     def func(params):
         params = tuple(params)
-        obj = abstract_qao_objective(Hp_run, Hp_cost, params, shots=shots, \
+        obj = abstract_qaoa_objective(Hp_run, Hp_cost, params, shots=shots, \
             cvar=cvar, sample_catcher=sample_catcher)
         return obj
 
@@ -137,7 +138,7 @@ def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
     if shots is None:
         sample_catcher = {}
     if (extra_samples > 0) or get_statevector:
-        _, fstate = abstract_qao_objective(Hp_run, Hp_cost, params, \
+        _, fstate = abstract_qaoa_objective(Hp_run, Hp_cost, params, \
             get_statevector=True, shots=extra_samples, cvar=cvar, \
             sample_catcher=sample_catcher)
 
