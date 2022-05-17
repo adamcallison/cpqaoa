@@ -5,6 +5,7 @@ from numba import njit
 
 import mix_util
 import generic_qaoa
+import spsa_optimization
 
 @njit
 def fwht(a) -> None:
@@ -87,9 +88,15 @@ def _abstract_qaoa_objective(Hp_run, Hp_cost, params, shots=None, \
     else:
         return res
 
+valid_opts = ['gp', 'spsa']
+
 def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
     extra_samples=0, minimizer_params=None, get_statevector=False, \
-    param_max=(2*np.pi), verbose=False):
+    param_max=(2*np.pi), opt='gp', verbose=False):
+    opt = opt.lower()
+
+    if not opt in valid_opts:
+        raise ValueError(f"opt must be in {valid_opts}")
 
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
@@ -107,33 +114,48 @@ def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
             cvar=cvar, sample_catcher=sample_catcher)
         return obj
 
-    if verbose:
-        calls = 0
-        best_obj = float('inf')
-        def callback(res):
-            nonlocal calls
-            nonlocal best_obj
-            obj = res.fun
-            calls += 1
-            if obj < best_obj:
-                best_obj = obj
-            print(
-                f"Call {calls} of {minimizer_params['n_calls']}. "\
-                f"Best Obj.: {best_obj}",
-                end='\r')
-    else:
-        callback = None
+    if opt == 'gp':
+        if verbose:
+            calls = 0
+            best_obj = float('inf')
+            def callback(res):
+                nonlocal calls
+                nonlocal best_obj
+                obj = res.fun
+                calls += 1
+                if obj < best_obj:
+                    best_obj = obj
+                print(
+                    f"Call {calls} of {minimizer_params['n_calls']}. "\
+                    f"Best Obj.: {best_obj}",
+                    end='\r')
+        else:
+            callback = None
 
-    res = skopt.gp_minimize(func,                  # the function to minimize
-                      dims,      # the bounds on each dimension of x
-                      acq_func="EI",      # the acquisition function
-                      verbose=False,
-                      callback=callback,
-                      **minimizer_params
-    )
+        res = skopt.gp_minimize(func,                  # the function to minimize
+                          dims,      # the bounds on each dimension of x
+                          acq_func="EI",      # the acquisition function
+                          verbose=False,
+                          callback=callback,
+                          **minimizer_params
+        )
 
-    value = res.fun
-    params = tuple(res.x)
+        value = res.fun
+        params = tuple(res.x)
+
+    elif opt == 'spsa':
+        func2 = lambda *params: func(params)
+        #initial_params = (np.random.default_rng().uniform(size=2*layers)*param_max/2) + (param_max/4)
+        initial_params = np.array([param_max/2]*2*layers)
+        n_calls = minimizer_params['n_calls']
+        #stepsize = np.min((0.02, 0.02*(50/n_calls)))
+        #stepsize = 0.01
+        stepsize = 0.03
+        spsa = spsa_optimization.SPSA(func2, initial_params, stepsize=stepsize, bounds=dims)
+        spsa.optimize(n_calls, verbose=verbose)
+
+        value = None
+        params = tuple(spsa.parameters)
 
     if shots is None:
         sample_catcher = {}
