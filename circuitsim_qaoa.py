@@ -35,8 +35,8 @@ def qaoa_circuit_layer(J, h, c, params, J_sequence=None, invert_cost_circuit=Fal
 
     return qc
 
-def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
-    compile=True, optimization_level=3, J_sequence=None):
+def qaoa_circuit(J, h, c, params_or_layers, J_sequence=None, measurement=True, \
+    noise=False, compile=True, optimization_level=3):
     # optimization_level only used if compile=True (passed to qiskit transpile)
     if not type(params_or_layers) == int:
         params = params_or_layers
@@ -57,9 +57,11 @@ def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
         qc.h(q)
 
     layer_template_params = (Parameter(f'param_p'), Parameter(f'param_d'))
-    layer_template = qaoa_circuit_layer(J, h, c, layer_template_params, J_sequence=J_sequence)
+    layer_template = qaoa_circuit_layer(J, h, c, layer_template_params, \
+        J_sequence=J_sequence)
     if not (J_sequence is None):
-        layer_template2 = qaoa_circuit_layer(J, h, c, layer_template_params, J_sequence=J_sequence, invert_cost_circuit=True)
+        layer_template2 = qaoa_circuit_layer(J, h, c, layer_template_params, \
+            J_sequence=J_sequence, invert_cost_circuit=True)
 
     for layer in range(layers):
         param_p, param_d = params[2*layer], params[(2*layer)+1]
@@ -91,14 +93,14 @@ def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
     return qc
 
 def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
-    cvar=False, noise=False, sample_catcher=None):
+    permutation=None, cvar=False, noise=False, sample_catcher=None):
     run_inputs, cost_inputs = (pqc, (Jcost, hcost, ccost))
     res = generic_qaoa.qaoa_objective("circuitsim", run_inputs, cost_inputs, \
-        params, shots, cvar, False, noise, sample_catcher)
+        params, shots, permutation, cvar, False, noise, sample_catcher)
     return res
 
 def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
-    cvar=False, noise=False, sample_catcher=None):
+    permutation=None, cvar=False, noise=False, sample_catcher=None):
 
     pqc_params = pqc.parameters
     layers = len(pqc_params)//2
@@ -126,7 +128,17 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
     samples, nrgs, counts = [], [], []
 
     for sample_bin, count in counts_qc.items():
+        if not (permutation is None):
+            n = len(permutation)
+            tmp1 = ''
+            tmp2 = sample_bin[::-1]
+            for j in range(n):
+                tmp1 = tmp1 + tmp2[permutation[j]]
+            sample_bin_unmapped = tmp1[::-1]
+            sample_bin = sample_bin_unmapped
         sample = int(sample_bin, 2)
+
+
         nrg = cost_util.ising_assignment_cost_from_binary(Jcost, hcost, ccost, \
             sample_bin)
         samples.append(sample)
@@ -136,8 +148,8 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
     return (samples, counts, nrgs)
 
 def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
-    cvar=False, extra_samples=0, minimizer_params=None, param_max=(2*np.pi), \
-    compile=False, noise=False, verbose=False):
+    J_sequence=None, cvar=False, extra_samples=0, minimizer_params=None, \
+    param_max=(2*np.pi), compile=False, noise=False, get_pqc=False, verbose=False):
 
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
@@ -146,13 +158,23 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
 
     sample_catcher = {}
 
-    pqc = qaoa_circuit(J, h, c, layers, noise=noise, measurement=True, \
-        compile=compile)
+    pqc = qaoa_circuit(J, h, c, layers, J_sequence=J_sequence, noise=noise, \
+        measurement=True, compile=compile)
+
+    permutation = None
+    if not (J_sequence is None):
+        if (layers % 2 == 0) and (J_sequence[0][0] == 'map'):
+            permutation = J_sequence[0][1]
+        elif (layers % 2 == 1) and (J_sequence[-1][0] == 'unmap'):
+            permutation = J_sequence[-1][1]
+        else:
+            permutation = None
 
     def func(params):
         params = tuple(params)
         obj = circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
-            shots, cvar=cvar, noise=noise, sample_catcher=sample_catcher)
+            shots, permutation=permutation, cvar=cvar, noise=noise, \
+            sample_catcher=sample_catcher)
         return obj
 
     if verbose:
@@ -186,4 +208,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     samples = \
         {k: v for k, v in sorted(samples.items(), key=lambda item: item[1][0])}
 
-    return value, params, samples
+    if get_pqc:
+        return value, params, samples, pqc
+    else:
+        return value, params, samples
