@@ -6,6 +6,7 @@ from numba import njit
 import mix_util
 import generic_qaoa
 import spsa_optimization
+import optim
 
 @njit
 def fwht(a) -> None:
@@ -88,7 +89,7 @@ def _abstract_qaoa_objective(Hp_run, Hp_cost, params, shots=None, \
     else:
         return res
 
-valid_opts = ['gp', 'spsa']
+valid_opts = ['gp', 'spsa', 'adam']
 
 def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
     extra_samples=0, minimizer_params=None, get_statevector=False, \
@@ -101,7 +102,7 @@ def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
 
-    dims = [(0.0, param_max)]*2*layers
+    bounds = [(0.0, param_max)]*2*layers
 
     if not (shots is None):
         sample_catcher = {}
@@ -115,47 +116,22 @@ def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
         return obj
 
     if opt == 'gp':
-        if verbose:
-            calls = 0
-            best_obj = float('inf')
-            def callback(res):
-                nonlocal calls
-                nonlocal best_obj
-                obj = res.fun
-                calls += 1
-                if obj < best_obj:
-                    best_obj = obj
-                print(
-                    f"Call {calls} of {minimizer_params['n_calls']}. "\
-                    f"Best Obj.: {best_obj}",
-                    end='\r')
-        else:
-            callback = None
+        n_calls = minimizer_params['n_calls']
+        n_random_starts = minimizer_params['n_random_starts']
+        value, params = optim.gaussian_process(func, bounds, n_calls, \
+            n_random_starts, verbose=verbose)
 
-        res = skopt.gp_minimize(func,                  # the function to minimize
-                          dims,      # the bounds on each dimension of x
-                          acq_func="EI",      # the acquisition function
-                          verbose=False,
-                          callback=callback,
-                          **minimizer_params
-        )
-
-        value = res.fun
-        params = tuple(res.x)
-
-    elif opt == 'spsa':
-        func2 = lambda *params: func(params)
-        #initial_params = (np.random.default_rng().uniform(size=2*layers)*param_max/2) + (param_max/4)
+    if opt == 'spsa':
         initial_params = np.array([param_max/2]*2*layers)
         n_calls = minimizer_params['n_calls']
-        #stepsize = np.min((0.02, 0.02*(50/n_calls)))
-        #stepsize = 0.01
-        stepsize = 0.03
-        spsa = spsa_optimization.SPSA(func2, initial_params, stepsize=stepsize, bounds=dims)
-        spsa.optimize(n_calls, verbose=verbose)
+        value, params = optim.spsa(func, initial_params, bounds, n_calls, \
+            verbose=verbose)
 
-        value = None
-        params = tuple(spsa.parameters)
+    if opt == 'adam':
+        n_calls = minimizer_params['n_calls']
+        n_random_starts = minimizer_params['n_random_starts']
+        value, params = optim.adam(func, layers, n_calls, n_random_starts, \
+            verbose=verbose)
 
     if shots is None:
         sample_catcher = {}

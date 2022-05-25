@@ -9,7 +9,7 @@ import cost_util, mix_util, generic_qaoa
 
 from qiskit.providers.aer import AerSimulator
 
-def qaoa_circuit_layer(J, h, c, params):
+def qaoa_circuit_layer(J, h, c, params, J_sequence=None, invert_cost_circuit=False):
     try:
         params = tuple(params)
     except TypeError:
@@ -23,38 +23,20 @@ def qaoa_circuit_layer(J, h, c, params):
     qc = QuantumCircuit(qc_qubits)
 
     param_p, param_d = params[0], params[1]
-    qc_cost = cost_util.cost_circuit(J, h, c, param_p)
+    if J_sequence is None:
+        qc_cost = cost_util.cost_circuit(J, h, c, param_p)
+    else:
+        qc_cost, tmp1, tmp2 = cost_util.cost_circuit_2qaoan(J_sequence, J, h, c, param_p)
+    if invert_cost_circuit:
+        qc_cost = qc_cost.inverse()
     qc_mix = mix_util.standard_mixer_circuit(n, param_d)
     qc = qc.compose(qc_cost)
     qc = qc.compose(qc_mix)
 
     return qc
 
-def determine_qubit_assignment(qc):
-    # not needed, will remove eventually
-    wire_names = qc.draw().wire_names()
-    logical_idxs, physical_idxs = [], []
-    for wn in wire_names:
-        if '->' in wn:
-            logical_name, physical_name = \
-                tuple(x.strip() for x in wn.split('->'))
-            logical_name = logical_name.split('_')[1]
-            logical_idx, physical_idx = int(logical_name), int(physical_name)
-        else:
-            logical_idx = wn.split('_')[1].strip().strip(':')
-            logical_idx = int(logical_idx)
-            physical_idx = logical_idx
-        logical_idxs.append(logical_idx)
-        physical_idxs.append(physical_idx)
-    l_to_p = {logical_idxs[j]:physical_idxs[j] for j in \
-        range(len(logical_idxs))}
-    p_to_l = {physical_idxs[j]:logical_idxs[j] for j in \
-        range(len(physical_idxs))}
-
-    return l_to_p, p_to_l
-
 def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
-    compile=True, optimization_level=3):
+    compile=True, optimization_level=3, J_sequence=None):
     # optimization_level only used if compile=True (passed to qiskit transpile)
     if not type(params_or_layers) == int:
         params = params_or_layers
@@ -75,15 +57,24 @@ def qaoa_circuit(J, h, c, params_or_layers, measurement=True, noise=False, \
         qc.h(q)
 
     layer_template_params = (Parameter(f'param_p'), Parameter(f'param_d'))
-    layer_template = qaoa_circuit_layer(J, h, c, layer_template_params)
+    layer_template = qaoa_circuit_layer(J, h, c, layer_template_params, J_sequence=J_sequence)
+    if not (J_sequence is None):
+        layer_template2 = qaoa_circuit_layer(J, h, c, layer_template_params, J_sequence=J_sequence, invert_cost_circuit=True)
 
     for layer in range(layers):
         param_p, param_d = params[2*layer], params[(2*layer)+1]
-        qc_layer = layer_template.assign_parameters({
-            layer_template_params[0]:param_p,
-            layer_template_params[1]:param_d,
-            }
-        )
+        if (not (J_sequence is None)) and (not (layer % 2 == 0)):
+            qc_layer = layer_template2.assign_parameters({
+                layer_template_params[0]:-param_p,
+                layer_template_params[1]:param_d,
+                }
+            )
+        else:
+            qc_layer = layer_template.assign_parameters({
+                layer_template_params[0]:param_p,
+                layer_template_params[1]:param_d,
+                }
+            )
         qc = qc.compose(qc_layer)
 
     if measurement:
