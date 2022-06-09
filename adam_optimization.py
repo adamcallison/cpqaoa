@@ -26,7 +26,7 @@ def adam_opt(grad_func, params, step, iterations, beta1=0.9, beta2=0.999, \
     t = 0 # initialize timestep
     for iteration in range(iterations):
         if verbose:
-            pc = 100*(iteration+1)/iterations
+            pc = 100*(iteration)/iterations
             print(f"{pc:.2f}% complete", end="\r")
         t += 1
         g = grad_func(params, *grad_args, **grad_kwargs) # get gradients wrt stochastic objective function

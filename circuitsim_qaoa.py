@@ -149,11 +149,18 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
 
 def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     J_sequence=None, cvar=False, extra_samples=0, minimizer_params=None, \
-    param_max=(2*np.pi), compile=False, noise=False, get_pqc=False, verbose=False):
+    compile=False, noise=False, get_pqc=False, verbose=False):
 
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
+    else:
+        minimizer_params = dict(minimizer_params)
 
+    try:
+        param_max = minimizer_params['param_max']
+        del minimizer_params['param_max']
+    except KeyError:
+        param_max = 2*np.pi
     dims = [(0.0, param_max)]*2*layers
 
     sample_catcher = {}

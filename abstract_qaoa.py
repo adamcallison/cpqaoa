@@ -56,7 +56,7 @@ def abstract_qaoa_objective(Hp_run, Hp_cost, params, get_statevector=False, \
     shots=None, cvar=False, sample_catcher=None):
     run_inputs, cost_inputs = (Hp_run, Hp_cost)
     res = generic_qaoa.qaoa_objective("abstract", run_inputs, cost_inputs, \
-        params, shots, cvar, get_statevector, False, sample_catcher)
+        params, shots, None, cvar, get_statevector, False, sample_catcher)
     if get_statevector:
         obj, fstate = res
         return obj, fstate
@@ -89,11 +89,11 @@ def _abstract_qaoa_objective(Hp_run, Hp_cost, params, shots=None, \
     else:
         return res
 
-valid_opts = ['gp', 'spsa', 'adam']
+valid_opts = ['gp', 'spsa', 'adam', 'sa']
 
 def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
     extra_samples=0, minimizer_params=None, get_statevector=False, \
-    param_max=(2*np.pi), opt='gp', verbose=False):
+    opt='gp', verbose=False):
     opt = opt.lower()
 
     if not opt in valid_opts:
@@ -101,8 +101,8 @@ def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
 
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
-
-    bounds = [(0.0, param_max)]*2*layers
+    else:
+        minimizer_params = dict(minimizer_params)
 
     if not (shots is None):
         sample_catcher = {}
@@ -118,12 +118,27 @@ def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
     if opt == 'gp':
         n_calls = minimizer_params['n_calls']
         n_random_starts = minimizer_params['n_random_starts']
+
+        try:
+             param_max = minimizer_params['param_max']
+             del minimizer_params['param_max']
+        except KeyError:
+            param_max = 2*np.pi
+        bounds = [(0.0, param_max)]*2*layers
+
         value, params = optim.gaussian_process(func, bounds, n_calls, \
             n_random_starts, verbose=verbose)
 
     if opt == 'spsa':
         initial_params = np.array([param_max/2]*2*layers)
         n_calls = minimizer_params['n_calls']
+
+        try:
+             param_max = minimizer_params['param_max']
+        except KeyError:
+            param_max = 2*np.pi
+        bounds = [(0.0, param_max)]*2*layers
+
         value, params = optim.spsa(func, initial_params, bounds, n_calls, \
             verbose=verbose)
 
@@ -132,6 +147,18 @@ def abstract_qaoa_loop(Hp_run, Hp_cost, layers, shots=None, cvar=False, \
         n_random_starts = minimizer_params['n_random_starts']
         value, params = optim.adam(func, layers, n_calls, n_random_starts, \
             verbose=verbose)
+
+    if opt == 'sa':
+        dims = minimizer_params['dims']
+        sa_iterations = minimizer_params['sa_iterations']
+        sa_runs = minimizer_params['sa_runs']
+        try:
+            initial_params = minimizer_params['initial_params']
+        except KeyError:
+            initial_params = None
+        value, params = optim.sa(func, dims, sa_iterations, sa_runs, \
+            initial_params=initial_params, verbose=verbose)
+
 
     if shots is None:
         sample_catcher = {}

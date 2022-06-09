@@ -3,6 +3,7 @@ import numpy as np
 import skopt
 import spsa_optimization
 import adam_optimization
+import sa_optimization
 
 def gaussian_process(objective_func, bounds, n_calls, n_random_starts, \
     verbose=False):
@@ -40,7 +41,7 @@ def adam(objective_func, layers, n_calls, n_random_starts, verbose=False):
     best_value = float('inf')
     for nrs in range(n_random_starts):
         if outer_verbose:
-            pc = 100*(nrs+1)/n_random_starts
+            pc = 100*(nrs)/n_random_starts
             print(f"{pc:.2f}% complete", end="\r")
 
         initial_params = np.random.default_rng().uniform(size=layers*2)*2*np.pi
@@ -74,3 +75,40 @@ def spsa(objective_func, initial_params, bounds, n_calls, verbose=False):
     params = tuple(spsa.parameters)
 
     return value, params
+
+def sa(objective_func, dims, sa_iterations, sa_runs, initial_params=None, \
+    verbose=True):
+    if initial_params is None:
+        basic_search_inputs = {'dims': dims,  'cost_function': objective_func}
+        params, cost = sa_optimization.basic_search(basic_search_inputs, \
+            sa_optimization.cost_for_annealing, \
+            sa_optimization.qaoa_grid_search_point_finder, verbose=verbose)
+        if verbose:
+            print(f"Grid search finished with params={params}, cost={cost}")
+    elif initial_params == 'random':
+        if verbose:
+            params = 'random'
+            print(f"Initial params are random")
+    else:
+        params = initial_params
+        cost = objective_func(params)
+        if verbose:
+            print(f"Initial params {params} have cost {cost}")
+
+    annealing_inputs = {'step':0.01, 'initial_params':params, 'T_max': 1.0, \
+        'cost_function': objective_func, 'dims':dims}
+
+    best_params, best_cost, costs = sa_optimization.simulated_annealing(\
+                                annealing_inputs, sa_iterations, sa_runs,
+                                sa_optimization.initial_params_for_annealing,
+                                sa_optimization.cost_for_annealing,
+                                sa_optimization.new_params_for_annealing,
+                                sa_optimization.boltzmann_acceptance_rule,
+                                sa_optimization.temperature_schedule,
+                                verbose=verbose)
+
+    if verbose:
+        print(f"Simulated annealing finished with params={best_params}, "\
+            f"cost={best_cost}")
+
+    return best_cost, best_params
