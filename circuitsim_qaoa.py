@@ -93,14 +93,18 @@ def qaoa_circuit(J, h, c, params_or_layers, J_sequence=None, measurement=True, \
     return qc
 
 def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
-    permutation=None, cvar=False, noise=False, sample_catcher=None):
+    physical_to_logical=None, cvar=False, noise=False, sample_catcher=None):
     run_inputs, cost_inputs = (pqc, (Jcost, hcost, ccost))
     res = generic_qaoa.qaoa_objective("circuitsim", run_inputs, cost_inputs, \
-        params, shots, permutation, cvar, False, noise, sample_catcher)
+        params, shots, physical_to_logical, cvar, False, noise, sample_catcher)
     return res
 
 def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
-    permutation=None, cvar=False, noise=False, sample_catcher=None):
+    physical_to_logical=None, cvar=False, noise=False, sample_catcher=None):
+
+    logical_to_physical_final = None
+    if not (physical_to_logical is None):
+        logical_to_physical_final = cost_util.invert_permutation(physical_to_logical)
 
     pqc_params = pqc.parameters
     layers = len(pqc_params)//2
@@ -128,12 +132,12 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
     samples, nrgs, counts = [], [], []
 
     for sample_bin, count in counts_qc.items():
-        if not (permutation is None):
-            n = len(permutation)
+        if not (logical_to_physical_final is None):
+            n = len(logical_to_physical_final)
             tmp1 = ''
             tmp2 = sample_bin[::-1]
             for j in range(n):
-                tmp1 = tmp1 + tmp2[permutation[j]]
+                tmp1 = tmp1 + tmp2[logical_to_physical_final[j]]
             sample_bin_unmapped = tmp1[::-1]
             sample_bin = sample_bin_unmapped
         sample = int(sample_bin, 2)
@@ -168,19 +172,27 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     pqc = qaoa_circuit(J, h, c, layers, J_sequence=J_sequence, noise=noise, \
         measurement=True, compile=compile)
 
-    permutation = None
+    #permutation = None
+    #logical_to_physical = None
     if not (J_sequence is None):
-        if (layers % 2 == 0) and (J_sequence[0][0] == 'map'):
-            permutation = J_sequence[0][1]
-        elif (layers % 2 == 1) and (J_sequence[-1][0] == 'unmap'):
-            permutation = J_sequence[-1][1]
-        else:
-            permutation = None
+        #if (layers % 2 == 0) and (J_sequence[0][0] == 'map'):
+        if (layers % 2 == 0) and (J_sequence[0][0] == 'logical to physical'):
+            physical_to_logical = cost_util.invert_permutation(J_sequence[0][1])
+        #elif (layers % 2 == 1) and (J_sequence[-1][0] == 'unmap'):
+        elif (layers % 2 == 1) and (J_sequence[-1][0] == 'physical to logical'):
+            #permutation = J_sequence[-1][1]
+            physical_to_logical = J_sequence[-1][1]
+    else:
+        #permutation = None
+        physical_to_logical = None
 
     def func(params):
         params = tuple(params)
+        #obj = circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
+        #    shots, permutation=permutation, cvar=cvar, noise=noise, \
+        #    sample_catcher=sample_catcher)
         obj = circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
-            shots, permutation=permutation, cvar=cvar, noise=noise, \
+            shots, physical_to_logical=physical_to_logical, cvar=cvar, noise=noise, \
             sample_catcher=sample_catcher)
         return obj
 

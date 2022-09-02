@@ -86,45 +86,47 @@ def cost_circuit_2qaoan(J_sequence, J, h, c, param):
     qc_qubits = QuantumRegister(n, 'q')
     qc = QuantumCircuit(qc_qubits)
 
-    initial_permutation, inv_initial_permutation = None, None
-    if J_sequence[0][0] == 'map':
-        initial_permutation = np.array(J_sequence[0][1], dtype=int)
-        inv_initial_permutation = invert_permutation(initial_permutation)
-        h = h.copy()
+    logical_to_physical = None
+    if J_sequence[0][0] == 'logical to physical':
+        logical_to_physical = np.array(J_sequence[0][1], dtype=int)
         J_sequence = J_sequence[1:]
 
     for q1 in range(n):
         logical_qubit = q1
-        if initial_permutation is None:
+        if logical_to_physical is None:
             physical_qubit = q1
         else:
-            physical_qubit = inv_initial_permutation[q1]
-        hval = h[physical_qubit]
+            physical_qubit = logical_to_physical[q1]
+        hval = h[q1]
         if not (hval == 0.0):
-            qc.rz(2*param*hval, q1)
+            qc.rz(2*param*hval, physical_qubit)
 
-    final_permutation = None
+    physical_to_logical = None
     for i, instruction in enumerate(J_sequence):
-        if instruction[0] == 'swap':
-            qc.swap(instruction[1][0], instruction[1][1])
-        elif instruction[0] == 'hamiltonian_gate':
+        # putting swapints as just two gates next to each other to allow parameterized gates
+        if instruction[0] in ('swap', 'swapint'):
             physical_pair = instruction[2]
             logical_pair = instruction[1]
-            Jcoeff = J[logical_pair[0], logical_pair[1]] + J[logical_pair[1], logical_pair[0]]
+            qc.swap(physical_pair[0], physical_pair[1])
+        if instruction[0] in ('interaction', 'swapint'):
+            physical_pair = instruction[2]
+            logical_pair = instruction[1]
+            Jcoeff = J[logical_pair[0], logical_pair[1]] + J[logical_pair[1], \
+                logical_pair[0]]
             if Jcoeff == 0:
                 continue
             qc.rzz(2*param*Jcoeff, physical_pair[0], physical_pair[1])
-        elif instruction[0] == 'map':
-            raise ValueError("map can only be done as first step")
-        elif instruction[0] == 'unmap':
+        if instruction[0] == 'logical to physical':
+            raise ValueError("'logical to physical' can only be done as first step")
+        if instruction[0] == 'physical to logical':
             if not (i == (len(J_sequence)) - 1):
-                raise ValueError("unmap can only be done as last step")
+                raise ValueError("'physical to logical' can only be done as last step")
             else:
-                final_permutation = np.array(instruction[1])
+                physical_to_logical = np.array(instruction[1])
 
     if not (c == 0.0):
         qc.global_phase = qc.global_phase - (param*c)
-    return qc, initial_permutation, final_permutation
+    return qc, logical_to_physical, physical_to_logical
 
 def bnb_optimize(J, h, c, verbose=False):
     best_state, best_nrg, stats = mixsk_all.bnb(J, h, priority_order='lowest', \

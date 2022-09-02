@@ -3,7 +3,7 @@ import numpy as np
 import abstract_qaoa
 import circuitsim_qaoa
 
-def qaoa_objective(mode, run_inputs, cost_inputs, params, shots, permutation, \
+def qaoa_objective(mode, run_inputs, cost_inputs, params, shots, physical_to_logical, \
     cvar, get_statevector, noise, sample_catcher):
 
     mode = mode.lower()
@@ -20,8 +20,8 @@ def qaoa_objective(mode, run_inputs, cost_inputs, params, shots, permutation, \
     if mode == 'abstract' and (not (noise is False)):
         raise ValueError("noise must be False for abstract mode")
 
-    if mode == 'abstract' and (not (permutation is None)):
-        raise ValueError(" permutation must be None for abstract mode")
+    if mode == 'abstract' and (not (physical_to_logical is None)):
+        raise ValueError(" physical_to_logical must be None for abstract mode")
 
     if mode == 'abstract':
         Hp_run = run_inputs
@@ -36,7 +36,7 @@ def qaoa_objective(mode, run_inputs, cost_inputs, params, shots, permutation, \
         Jcost, hcost, ccost = cost_inputs
 
         res = circuitsim_qaoa._circuitsim_qaoa_objective(pqc, Jcost, hcost, \
-            ccost, params, shots=shots, permutation=permutation, \
+            ccost, params, shots=shots, physical_to_logical=physical_to_logical, \
             cvar=cvar, noise=noise, sample_catcher=sample_catcher)
 
     if get_statevector:
