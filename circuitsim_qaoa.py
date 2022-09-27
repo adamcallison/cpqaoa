@@ -8,6 +8,9 @@ import skopt
 import cost_util, mix_util, generic_qaoa
 
 from qiskit.providers.aer import AerSimulator
+from pytket.passes import FullPeepholeOptimise, DefaultMappingPass, SynthesiseTket
+from pytket.architecture import Architecture
+from pytket.extensions.qiskit import qiskit_to_tk, tk_to_qiskit
 
 def qaoa_circuit_layer(J, h, c, params, J_sequence=None, invert_cost_circuit=False):
     try:
@@ -36,7 +39,7 @@ def qaoa_circuit_layer(J, h, c, params, J_sequence=None, invert_cost_circuit=Fal
     return qc
 
 def qaoa_circuit(J, h, c, params_or_layers, J_sequence=None, measurement=True, \
-    noise=False, compile=True, optimization_level=3):
+    noise=False, compile=True, tket=False, optimization_level=3):
     # optimization_level only used if compile=True (passed to qiskit transpile)
     if not type(params_or_layers) == int:
         params = params_or_layers
@@ -82,15 +85,49 @@ def qaoa_circuit(J, h, c, params_or_layers, J_sequence=None, measurement=True, \
     if measurement:
         qc.measure_all()
 
+    if (not compile) and tket:
+        raise ValueError
+
     if compile:
         device_backend = FakeTokyo()
+        if tket:
+            # tket currently making things worse
+            couplings = extract_couplings(device_backend)
+            arch = Architecture(couplings)
+            qc_tket = qiskit_to_tk(qc)
+            FullPeepholeOptimise().apply(qc_tket)
+            DefaultMappingPass(arch).apply(qc_tket)
+            SynthesiseTket().apply(qc_tket)
+            #FullPeepholeOptimise().apply(qc_tket)
+            qc = tk_to_qiskit(qc_tket)
         if noise:
             sim_tokyo = AerSimulator.from_backend(device_backend)
             qc = transpile(qc, sim_tokyo, optimization_level=optimization_level)
         else:
             qc = transpile(qc, device_backend, \
                 optimization_level=optimization_level)
+        #if noise:
+        #    raise NotImplementedError
+        #else:
+        #    if noise:
+        #        sim_tokyo = AerSimulator.from_backend(device_backend)
+        #        qc = transpile(qc, sim_tokyo, optimization_level=optimization_level)
+        #    else:
+        #        qc = transpile(qc, device_backend, \
+        #            optimization_level=optimization_level)
     return qc
+
+def extract_couplings(device_backend):
+    couplings = []
+    for gate in device_backend.properties().gates:
+        qubits = gate.qubits
+        if not len(qubits) == 2:
+            continue
+        qubits = tuple(np.sort(qubits))
+        if not qubits in couplings:
+            couplings.append(qubits)
+    return couplings
+    
 
 def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
     physical_to_logical=None, cvar=False, noise=False, sample_catcher=None):
@@ -153,7 +190,7 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
 
 def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     J_sequence=None, cvar=False, extra_samples=0, minimizer_params=None, \
-    compile=False, noise=False, get_pqc=False, verbose=False):
+    compile=False, tket=False, noise=False, get_pqc=False, verbose=False):
 
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
@@ -170,7 +207,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, \
     sample_catcher = {}
 
     pqc = qaoa_circuit(J, h, c, layers, J_sequence=J_sequence, noise=noise, \
-        measurement=True, compile=compile)
+        measurement=True, compile=compile, tket=tket)
 
     #permutation = None
     #logical_to_physical = None
