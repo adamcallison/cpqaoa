@@ -1,5 +1,5 @@
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
-from qiskit.test.mock import FakeTokyo
+from qiskit.test.mock import FakeTokyo, FakeLondon
 from qiskit.providers.aer import QasmSimulator
 from qiskit.circuit import Parameter
 import numpy as np
@@ -117,6 +117,8 @@ def qaoa_circuit(J, h, c, params_or_layers, J_sequence=None, measurement=True, \
     if compile:
         if n == 20:
             device_backend = FakeTokyo()
+        elif n == 5:
+            device_backend = FakeLondon()
         else:
             device_backend = FakeTokyo()
         if tket:
