@@ -12,7 +12,7 @@ from pytket.passes import FullPeepholeOptimise, DefaultMappingPass, SynthesiseTk
 from pytket.architecture import Architecture
 from pytket.extensions.qiskit import qiskit_to_tk, tk_to_qiskit
 
-def qaoa_circuit_layer(J, h, c, params, J_sequence=None, invert_cost_circuit=False):
+def qaoa_circuit_layer(J, h, c, params, J_sequence=None, invert_cost_circuit=False, mixqubits=None):
     try:
         params = tuple(params)
     except TypeError:
@@ -32,16 +32,37 @@ def qaoa_circuit_layer(J, h, c, params, J_sequence=None, invert_cost_circuit=Fal
         qc_cost, tmp1, tmp2 = cost_util.cost_circuit_2qaoan(J_sequence, J, h, c, param_p)
     if invert_cost_circuit:
         qc_cost = qc_cost.inverse()
-    qc_mix = mix_util.standard_mixer_circuit(n, param_d)
+    qc_mix = mix_util.standard_mixer_circuit(n, param_d, mixqubits)
     qc = qc.compose(qc_cost)
-    qc = qc.compose(qc_mix)
 
+    qc = qc.compose(qc_mix)
+    
     return qc
 
+def invert_permutation(perm):
+    perm = np.array(perm)
+    tmp = np.empty_like(perm)
+    tmp[perm] = np.arange(perm.shape[0])
+    return tmp
+
 def qaoa_circuit(J, h, c, params_or_layers, J_sequence=None, measurement=True, \
-    noise=False, compile=True, tket=False, optimization_level=3):
+    noise=False, compile=True, tket=False, nverts=None, optimization_level=3):
     # optimization_level only used if compile=True (passed to qiskit transpile)
 
+    if (J_sequence is None) and (not (nverts is None)):
+        raise NotImplementedError
+
+    verts_odd, verts_even = None, None
+    if not (nverts is None):
+        if J_sequence[0][0] == 'logical to physical':
+            logical_to_physical_initial = np.array(J_sequence[0][1], dtype=int)
+        if J_sequence[-1][0] == 'physical to logical':
+            physical_to_logical_final = np.array(J_sequence[-1][1], dtype=int)
+            logical_to_physical_final = invert_permutation(physical_to_logical_final)
+
+        verts_odd = tuple(logical_to_physical_final[x] for x in range(nverts))
+        verts_even = tuple(logical_to_physical_initial[x] for x in range(nverts))
+        
     if not type(params_or_layers) == int:
         params = params_or_layers
         layers_double = len(params)
@@ -57,15 +78,19 @@ def qaoa_circuit(J, h, c, params_or_layers, J_sequence=None, measurement=True, \
     qc_qubits = QuantumRegister(n, 'q')
     qc = QuantumCircuit(qc_qubits)
 
-    for q in range(n):
-        qc.h(q)
+    if verts_even is None:
+        for q in range(n):
+            qc.h(q)
+    else:
+        for q in verts_even:
+            qc.h(q)
 
     layer_template_params = (Parameter(f'param_p'), Parameter(f'param_d'))
     layer_template = qaoa_circuit_layer(J, h, c, layer_template_params, \
-        J_sequence=J_sequence)
+        J_sequence=J_sequence, mixqubits=verts_odd)
     if not (J_sequence is None):
         layer_template2 = qaoa_circuit_layer(J, h, c, layer_template_params, \
-            J_sequence=J_sequence, invert_cost_circuit=True)
+            J_sequence=J_sequence, invert_cost_circuit=True, mixqubits=verts_even)
 
     for layer in range(layers):
         param_p, param_d = params[2*layer], params[(2*layer)+1]
@@ -200,6 +225,11 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
     J_sequence=None, cvar=False, extra_samples=0, minimizer_params=None, \
     compile=False, tket=False, noise=False, get_pqc=False, verbose=False):
 
+    if not nqubits is None:
+        nverts = hcost.shape[0]
+    else:
+        nverts = None
+
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
     else:
@@ -223,7 +253,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
         J_padded[:n, :n] = J
         h_padded = np.zeros(nqubits)
         h_padded[:n] = h
-    pqc = qaoa_circuit(J_padded, h_padded, c, layers, J_sequence=J_sequence, noise=noise, \
+    pqc = qaoa_circuit(J_padded, h_padded, c, layers, nverts=nverts, J_sequence=J_sequence, noise=noise, \
         measurement=True, compile=compile, tket=tket)
 
     if not (J_sequence is None):

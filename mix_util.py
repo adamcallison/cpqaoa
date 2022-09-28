@@ -15,10 +15,12 @@ def standard_mixer_eigenvalues(n):
         eigvals[j] = 2*ones
     return eigvals
 
-def standard_mixer_circuit(n, param):
+def standard_mixer_circuit(n, param, qubits=None):
+    if qubits is None:
+        qubits = range(n)
     qc_qubits = QuantumRegister(n, 'q')
     qc = QuantumCircuit(qc_qubits)
-    for q1 in range(n):
+    for q1 in qubits:
         qc.rx(-2*param, q1)
     qc.global_phase = -(param*n)
     return qc
