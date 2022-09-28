@@ -182,8 +182,8 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, nverts=N
             sample_bin_unmapped = tmp1[::-1]
             sample_bin = sample_bin_unmapped
         if not nverts is None:
-            sample_bin_trunc = sample_bin[-nverts:]
-        sample = int(sample_bin_trunc, 2)
+            sample_bin = sample_bin[-nverts:]
+        sample = int(sample_bin, 2)
 
 
         nrg = cost_util.ising_assignment_cost_from_binary(Jcost, hcost, ccost, \
@@ -215,14 +215,14 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
     sample_catcher = {}
 
     if (J_sequence is None) or (nqubits is None):
-        J_padded, Jcost_padded = J, Jcost
-        h_padded, hcost_padded = h, hcost
+        J_padded = J
+        h_padded = h
     else:
         n = h.shape[0]
-        J_padded, Jcost_padded = np.zeros((nqubits, nqubits)), np.zeros((nqubits, nqubits))
-        J_padded[:n, :n], Jcost_padded[:n, :n] = J, Jcost
-        h_padded, hcost_padded = np.zeros(nqubits), np.zeros(nqubits)
-        h_padded[:n], hcost_padded[:n] = h, hcost
+        J_padded = np.zeros((nqubits, nqubits))
+        J_padded[:n, :n] = J
+        h_padded = np.zeros(nqubits)
+        h_padded[:n] = h
     pqc = qaoa_circuit(J_padded, h_padded, c, layers, J_sequence=J_sequence, noise=noise, \
         measurement=True, compile=compile, tket=tket)
 
@@ -236,7 +236,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
 
     def func(params):
         params = tuple(params)
-        obj = circuitsim_qaoa_objective(pqc, Jcost_padded, hcost_padded, ccost, params, \
+        obj = circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
             shots, nverts=nverts, physical_to_logical=physical_to_logical, cvar=cvar, noise=noise, \
             sample_catcher=sample_catcher)
         return obj
@@ -265,7 +265,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
 
     if extra_samples > 0:
         params = tuple(params)
-        circuitsim_qaoa_objective(pqc, Jcost_padded, hcost_padded, ccost, params, \
+        circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
             extra_samples, nverts=nverts, \
             physical_to_logical=physical_to_logical, cvar=cvar, noise=noise, \
             sample_catcher=sample_catcher)
