@@ -4,7 +4,7 @@ import abstract_qaoa
 import circuitsim_qaoa
 
 def qaoa_objective(mode, run_inputs, cost_inputs, params, shots, physical_to_logical, \
-    cvar, get_statevector, noise, sample_catcher):
+    cvar, get_statevector, sample_catcher):
 
     mode = mode.lower()
 
@@ -16,9 +16,6 @@ def qaoa_objective(mode, run_inputs, cost_inputs, params, shots, physical_to_log
 
     if mode == 'circuitsim' and (not (get_statevector is False)):
         raise ValueError("get_statevector must be False for abstract mode")
-
-    if mode == 'abstract' and (not (noise is False)):
-        raise ValueError("noise must be False for abstract mode")
 
     if mode == 'abstract' and (not (physical_to_logical is None)):
         raise ValueError(" physical_to_logical must be None for abstract mode")
@@ -37,7 +34,7 @@ def qaoa_objective(mode, run_inputs, cost_inputs, params, shots, physical_to_log
 
         res = circuitsim_qaoa._circuitsim_qaoa_objective(pqc, Jcost, hcost, \
             ccost, params, shots=shots, physical_to_logical=physical_to_logical, \
-            cvar=cvar, noise=noise, sample_catcher=sample_catcher)
+            cvar=cvar, sample_catcher=sample_catcher)
 
     if get_statevector:
         res, fstate = res

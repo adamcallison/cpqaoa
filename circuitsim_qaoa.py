@@ -46,7 +46,7 @@ def invert_permutation(perm):
     return tmp
 
 def qaoa_circuit(J, h, c, params_or_layers, J_sequence=None, measurement=True, \
-    noise=False, compile=True, tket=False, nverts=None, optimization_level=3):
+    compile=True, tket=False, nverts=None, optimization_level=3):
     # optimization_level only used if compile=True (passed to qiskit transpile)
 
     if (J_sequence is None) and (not (nverts is None)):
@@ -131,21 +131,8 @@ def qaoa_circuit(J, h, c, params_or_layers, J_sequence=None, measurement=True, \
             SynthesiseTket().apply(qc_tket)
             #FullPeepholeOptimise().apply(qc_tket)
             qc = tk_to_qiskit(qc_tket)
-        if noise:
-            sim_tokyo = AerSimulator.from_backend(device_backend)
-            qc = transpile(qc, sim_tokyo, optimization_level=optimization_level)
-        else:
-            qc = transpile(qc, device_backend, \
-                optimization_level=optimization_level)
-        #if noise:
-        #    raise NotImplementedError
-        #else:
-        #    if noise:
-        #        sim_tokyo = AerSimulator.from_backend(device_backend)
-        #        qc = transpile(qc, sim_tokyo, optimization_level=optimization_level)
-        #    else:
-        #        qc = transpile(qc, device_backend, \
-        #            optimization_level=optimization_level)
+
+        qc = transpile(qc, device_backend, optimization_level=optimization_level)
     return qc
 
 def extract_couplings(device_backend):
@@ -161,14 +148,14 @@ def extract_couplings(device_backend):
     
 
 def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
-    physical_to_logical=None, cvar=False, noise=False, sample_catcher=None):
+    physical_to_logical=None, cvar=False, sample_catcher=None):
     run_inputs, cost_inputs = (pqc, (Jcost, hcost, ccost))
     res = generic_qaoa.qaoa_objective("circuitsim", run_inputs, cost_inputs, \
-        params, shots, physical_to_logical, cvar, False, noise, sample_catcher)
+        params, shots, physical_to_logical, cvar, False, sample_catcher)
     return res
 
 def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
-    physical_to_logical=None, cvar=False, noise=False, sample_catcher=None):
+    physical_to_logical=None, cvar=False, sample_catcher=None):
 
     nverts = hcost.shape[0]
 
@@ -189,13 +176,8 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
         binds[pd] = params[(2*layer)+1]
     qc = pqc.bind_parameters(binds)
 
-    if noise:
-        device_backend = FakeTokyo()
-        sim_tokyo = AerSimulator.from_backend(device_backend)
-        job = sim_tokyo.run(qc, shots=shots)
-    else:
-        simulator = QasmSimulator()
-        job = simulator.run(qc, shots=shots)
+    simulator = QasmSimulator()
+    job = simulator.run(qc, shots=shots)
     result = job.result()
     counts_qc = result.get_counts(qc)
 
@@ -225,7 +207,7 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
 
 def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=None, \
     J_sequence=None, cvar=False, extra_samples=0, minimizer_params=None, \
-    compile=False, tket=False, noise=False, get_pqc=False, verbose=False):
+    compile=False, tket=False, get_pqc=False, verbose=False):
 
     if not nqubits is None:
         nverts = hcost.shape[0]
@@ -255,7 +237,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
         J_padded[:n, :n] = J
         h_padded = np.zeros(nqubits)
         h_padded[:n] = h
-    pqc = qaoa_circuit(J_padded, h_padded, c, layers, nverts=nverts, J_sequence=J_sequence, noise=noise, \
+    pqc = qaoa_circuit(J_padded, h_padded, c, layers, nverts=nverts, J_sequence=J_sequence, \
         measurement=True, compile=compile, tket=tket)
 
     if not (J_sequence is None):
@@ -269,7 +251,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
     def func(params):
         params = tuple(params)
         obj = circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
-            shots, physical_to_logical=physical_to_logical, cvar=cvar, noise=noise, \
+            shots, physical_to_logical=physical_to_logical, cvar=cvar, \
             sample_catcher=sample_catcher)
         return obj
 
@@ -299,7 +281,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
         params = tuple(params)
         circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
             extra_samples, \
-            physical_to_logical=physical_to_logical, cvar=cvar, noise=noise, \
+            physical_to_logical=physical_to_logical, cvar=cvar, \
             sample_catcher=sample_catcher)
     samples = sample_catcher
 
