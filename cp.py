@@ -118,6 +118,7 @@ def cp_ising_direct_mode1(A, sparse_approx=False, reg=True):
         J = J_p1
     else:
         J_p2 = -beta*np.ones((n, n))/8
+        np.fill_diagonal(J_p2, 0.0)
         J = J_p1 + J_p2
 
     h_p1 = np.zeros(n)
