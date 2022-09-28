@@ -133,15 +133,17 @@ def extract_couplings(device_backend):
     return couplings
     
 
-def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, nverts=None, \
+def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
     physical_to_logical=None, cvar=False, noise=False, sample_catcher=None):
-    run_inputs, cost_inputs = (pqc, (Jcost, hcost, ccost, nverts))
+    run_inputs, cost_inputs = (pqc, (Jcost, hcost, ccost))
     res = generic_qaoa.qaoa_objective("circuitsim", run_inputs, cost_inputs, \
         params, shots, physical_to_logical, cvar, False, noise, sample_catcher)
     return res
 
-def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, nverts=None, \
+def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
     physical_to_logical=None, cvar=False, noise=False, sample_catcher=None):
+
+    nverts = hcost.shape[0]
 
     logical_to_physical_final = None
     if not (physical_to_logical is None):
@@ -198,8 +200,6 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
     J_sequence=None, cvar=False, extra_samples=0, minimizer_params=None, \
     compile=False, tket=False, noise=False, get_pqc=False, verbose=False):
 
-    nverts = h.shape[0]
-
     if minimizer_params is None:
         minimizer_params = {'n_calls': 100, 'n_random_starts':25}
     else:
@@ -237,7 +237,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
     def func(params):
         params = tuple(params)
         obj = circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
-            shots, nverts=nverts, physical_to_logical=physical_to_logical, cvar=cvar, noise=noise, \
+            shots, physical_to_logical=physical_to_logical, cvar=cvar, noise=noise, \
             sample_catcher=sample_catcher)
         return obj
 
@@ -266,7 +266,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
     if extra_samples > 0:
         params = tuple(params)
         circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
-            extra_samples, nverts=nverts, \
+            extra_samples, \
             physical_to_logical=physical_to_logical, cvar=cvar, noise=noise, \
             sample_catcher=sample_catcher)
     samples = sample_catcher

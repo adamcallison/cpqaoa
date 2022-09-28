@@ -33,10 +33,10 @@ def qaoa_objective(mode, run_inputs, cost_inputs, params, shots, physical_to_log
 
     if mode == 'circuitsim':
         pqc = run_inputs
-        Jcost, hcost, ccost, nverts = cost_inputs
+        Jcost, hcost, ccost = cost_inputs
 
         res = circuitsim_qaoa._circuitsim_qaoa_objective(pqc, Jcost, hcost, \
-            ccost, params, shots=shots, nverts=nverts, physical_to_logical=physical_to_logical, \
+            ccost, params, shots=shots, physical_to_logical=physical_to_logical, \
             cvar=cvar, noise=noise, sample_catcher=sample_catcher)
 
     if get_statevector:
