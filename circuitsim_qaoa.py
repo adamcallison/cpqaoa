@@ -1,6 +1,6 @@
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit.test.mock import FakeTokyo, FakeLondon
-from qiskit.providers.aer import QasmSimulator
+from qiskit.providers.aer import AerSimulator
 from qiskit.circuit import Parameter
 import numpy as np
 import skopt
@@ -148,14 +148,14 @@ def extract_couplings(device_backend):
     
 
 def circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
-    physical_to_logical=None, cvar=False, sample_catcher=None):
-    run_inputs, cost_inputs = (pqc, (Jcost, hcost, ccost))
+    physical_to_logical=None, cvar=False, sample_catcher=None, noise=False):
+    run_inputs, cost_inputs = ((pqc, noise), (Jcost, hcost, ccost))
     res = generic_qaoa.qaoa_objective("circuitsim", run_inputs, cost_inputs, \
         params, shots, physical_to_logical, cvar, False, sample_catcher)
     return res
 
 def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
-    physical_to_logical=None, cvar=False, sample_catcher=None):
+    physical_to_logical=None, cvar=False, sample_catcher=None, noise=False):
 
     nverts = hcost.shape[0]
 
@@ -176,7 +176,17 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
         binds[pd] = params[(2*layer)+1]
     qc = pqc.bind_parameters(binds)
 
-    simulator = QasmSimulator()
+    if not noise:
+        simulator = AerSimulator()
+    else:
+        nqubits = pqc.num_qubits
+        if nqubits == 20:
+            simulator = AerSimulator.from_backend(FakeTokyo())
+        elif nqubits == 5:
+            simulator = AerSimulator.from_backend(FakeLondon())
+        else:
+            raise NotImplementedError
+
     job = simulator.run(qc, shots=shots)
     result = job.result()
     counts_qc = result.get_counts(qc)
@@ -207,7 +217,7 @@ def _circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, shots, \
 
 def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=None, \
     J_sequence=None, cvar=False, extra_samples=0, minimizer_params=None, \
-    compile=False, tket=False, get_pqc=False, verbose=False):
+    compile=False, tket=False, get_pqc=False, noise=False, verbose=False):
 
     if not nqubits is None:
         nverts = hcost.shape[0]
@@ -252,7 +262,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
         params = tuple(params)
         obj = circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
             shots, physical_to_logical=physical_to_logical, cvar=cvar, \
-            sample_catcher=sample_catcher)
+            sample_catcher=sample_catcher, noise=noise)
         return obj
 
     if verbose:
@@ -282,7 +292,7 @@ def circuitsim_qaoa_loop(J, h, c, Jcost, hcost, ccost, layers, shots, nqubits=No
         circuitsim_qaoa_objective(pqc, Jcost, hcost, ccost, params, \
             extra_samples, \
             physical_to_logical=physical_to_logical, cvar=cvar, \
-            sample_catcher=sample_catcher)
+            sample_catcher=sample_catcher, noise=noise)
     samples = sample_catcher
 
     samples = \
